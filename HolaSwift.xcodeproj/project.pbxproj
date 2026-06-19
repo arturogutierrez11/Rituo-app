@@ -6,14 +6,94 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		9DC4182F2F9C35F400782FEC /* ManagedSettings.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9DC4182E2F9C35F400782FEC /* ManagedSettings.framework */; };
+		9DC418312F9C35F400782FEC /* ManagedSettingsUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9DC418302F9C35F400782FEC /* ManagedSettingsUI.framework */; };
+		9DC418392F9C35F400782FEC /* ShieldConfigurationExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 9DC4182C2F9C35F400782FEC /* ShieldConfigurationExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		9DC419012F9D100000782FEC /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 9DC419002F9D100000782FEC /* GoogleSignIn */; };
+		9DC41A012F9E000000782FEC /* DeviceActivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9DC41A062F9E000000782FEC /* DeviceActivity.framework */; };
+		9DC41A022F9E000000782FEC /* ManagedSettings.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9DC4182E2F9C35F400782FEC /* ManagedSettings.framework */; };
+		9DC41A032F9E000000782FEC /* RituoDeviceActivityMonitor.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 9DC41A052F9E000000782FEC /* RituoDeviceActivityMonitor.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		9DC418372F9C35F400782FEC /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9DC417D82F9BE93400782FEC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9DC4182B2F9C35F400782FEC;
+			remoteInfo = ShieldConfigurationExtension;
+		};
+		9DC41A042F9E000000782FEC /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9DC417D82F9BE93400782FEC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9DC41A0C2F9E000000782FEC;
+			remoteInfo = RituoDeviceActivityMonitor;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		9DC4183E2F9C35F400782FEC /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				9DC418392F9C35F400782FEC /* ShieldConfigurationExtension.appex in Embed Foundation Extensions */,
+				9DC41A032F9E000000782FEC /* RituoDeviceActivityMonitor.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		9DC417E02F9BE93400782FEC /* HolaSwift.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HolaSwift.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9DC4182C2F9C35F400782FEC /* ShieldConfigurationExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShieldConfigurationExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		9DC4182E2F9C35F400782FEC /* ManagedSettings.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ManagedSettings.framework; path = System/Library/Frameworks/ManagedSettings.framework; sourceTree = SDKROOT; };
+		9DC418302F9C35F400782FEC /* ManagedSettingsUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ManagedSettingsUI.framework; path = System/Library/Frameworks/ManagedSettingsUI.framework; sourceTree = SDKROOT; };
+		9DC41A052F9E000000782FEC /* RituoDeviceActivityMonitor.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = RituoDeviceActivityMonitor.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		9DC41A062F9E000000782FEC /* DeviceActivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = DeviceActivity.framework; path = System/Library/Frameworks/DeviceActivity.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		9DC4183A2F9C35F400782FEC /* Exceptions for "ShieldConfigurationExtension" folder in "ShieldConfigurationExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 9DC4182B2F9C35F400782FEC /* ShieldConfigurationExtension */;
+		};
+		9DC41A072F9E000000782FEC /* Exceptions for "RituoDeviceActivityMonitor" folder in "RituoDeviceActivityMonitor" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 9DC41A0C2F9E000000782FEC /* RituoDeviceActivityMonitor */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		9DC417E22F9BE93400782FEC /* HolaSwift */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = HolaSwift;
+			sourceTree = "<group>";
+		};
+		9DC418322F9C35F400782FEC /* ShieldConfigurationExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				9DC4183A2F9C35F400782FEC /* Exceptions for "ShieldConfigurationExtension" folder in "ShieldConfigurationExtension" target */,
+			);
+			path = ShieldConfigurationExtension;
+			sourceTree = "<group>";
+		};
+		9DC41A082F9E000000782FEC /* RituoDeviceActivityMonitor */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				9DC41A072F9E000000782FEC /* Exceptions for "RituoDeviceActivityMonitor" folder in "RituoDeviceActivityMonitor" target */,
+			);
+			path = RituoDeviceActivityMonitor;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -23,6 +103,25 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9DC419012F9D100000782FEC /* GoogleSignIn in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9DC418292F9C35F400782FEC /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9DC4182F2F9C35F400782FEC /* ManagedSettings.framework in Frameworks */,
+				9DC418312F9C35F400782FEC /* ManagedSettingsUI.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9DC41A092F9E000000782FEC /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9DC41A012F9E000000782FEC /* DeviceActivity.framework in Frameworks */,
+				9DC41A022F9E000000782FEC /* ManagedSettings.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -33,6 +132,9 @@
 			isa = PBXGroup;
 			children = (
 				9DC417E22F9BE93400782FEC /* HolaSwift */,
+				9DC418322F9C35F400782FEC /* ShieldConfigurationExtension */,
+				9DC41A082F9E000000782FEC /* RituoDeviceActivityMonitor */,
+				9DC4182D2F9C35F400782FEC /* Frameworks */,
 				9DC417E12F9BE93400782FEC /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,8 +143,20 @@
 			isa = PBXGroup;
 			children = (
 				9DC417E02F9BE93400782FEC /* HolaSwift.app */,
+				9DC4182C2F9C35F400782FEC /* ShieldConfigurationExtension.appex */,
+				9DC41A052F9E000000782FEC /* RituoDeviceActivityMonitor.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		9DC4182D2F9C35F400782FEC /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				9DC41A062F9E000000782FEC /* DeviceActivity.framework */,
+				9DC4182E2F9C35F400782FEC /* ManagedSettings.framework */,
+				9DC418302F9C35F400782FEC /* ManagedSettingsUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -55,20 +169,68 @@
 				9DC417DC2F9BE93400782FEC /* Sources */,
 				9DC417DD2F9BE93400782FEC /* Frameworks */,
 				9DC417DE2F9BE93400782FEC /* Resources */,
+				9DC4183E2F9C35F400782FEC /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				9DC418382F9C35F400782FEC /* PBXTargetDependency */,
+				9DC41A0D2F9E000000782FEC /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				9DC417E22F9BE93400782FEC /* HolaSwift */,
 			);
 			name = HolaSwift;
 			packageProductDependencies = (
+				9DC419002F9D100000782FEC /* GoogleSignIn */,
 			);
 			productName = HolaSwift;
 			productReference = 9DC417E02F9BE93400782FEC /* HolaSwift.app */;
 			productType = "com.apple.product-type.application";
+		};
+		9DC4182B2F9C35F400782FEC /* ShieldConfigurationExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9DC4183B2F9C35F400782FEC /* Build configuration list for PBXNativeTarget "ShieldConfigurationExtension" */;
+			buildPhases = (
+				9DC418282F9C35F400782FEC /* Sources */,
+				9DC418292F9C35F400782FEC /* Frameworks */,
+				9DC4182A2F9C35F400782FEC /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				9DC418322F9C35F400782FEC /* ShieldConfigurationExtension */,
+			);
+			name = ShieldConfigurationExtension;
+			packageProductDependencies = (
+			);
+			productName = ShieldConfigurationExtension;
+			productReference = 9DC4182C2F9C35F400782FEC /* ShieldConfigurationExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		9DC41A0C2F9E000000782FEC /* RituoDeviceActivityMonitor */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9DC41A102F9E000000782FEC /* Build configuration list for PBXNativeTarget "RituoDeviceActivityMonitor" */;
+			buildPhases = (
+				9DC41A0A2F9E000000782FEC /* Sources */,
+				9DC41A092F9E000000782FEC /* Frameworks */,
+				9DC41A0B2F9E000000782FEC /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				9DC41A082F9E000000782FEC /* RituoDeviceActivityMonitor */,
+			);
+			name = RituoDeviceActivityMonitor;
+			packageProductDependencies = (
+			);
+			productName = RituoDeviceActivityMonitor;
+			productReference = 9DC41A052F9E000000782FEC /* RituoDeviceActivityMonitor.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -83,6 +245,12 @@
 					9DC417DF2F9BE93400782FEC = {
 						CreatedOnToolsVersion = 26.2;
 					};
+					9DC4182B2F9C35F400782FEC = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					9DC41A0C2F9E000000782FEC = {
+						CreatedOnToolsVersion = 26.2;
+					};
 				};
 			};
 			buildConfigurationList = 9DC417DB2F9BE93400782FEC /* Build configuration list for PBXProject "HolaSwift" */;
@@ -94,18 +262,37 @@
 			);
 			mainGroup = 9DC417D72F9BE93400782FEC;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				9DC418FF2F9D100000782FEC /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 9DC417E12F9BE93400782FEC /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				9DC417DF2F9BE93400782FEC /* HolaSwift */,
+				9DC4182B2F9C35F400782FEC /* ShieldConfigurationExtension */,
+				9DC41A0C2F9E000000782FEC /* RituoDeviceActivityMonitor */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		9DC417DE2F9BE93400782FEC /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9DC4182A2F9C35F400782FEC /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9DC41A0B2F9E000000782FEC /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -122,7 +309,34 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		9DC418282F9C35F400782FEC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9DC41A0A2F9E000000782FEC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		9DC418382F9C35F400782FEC /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9DC4182B2F9C35F400782FEC /* ShieldConfigurationExtension */;
+			targetProxy = 9DC418372F9C35F400782FEC /* PBXContainerItemProxy */;
+		};
+		9DC41A0D2F9E000000782FEC /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9DC41A0C2F9E000000782FEC /* RituoDeviceActivityMonitor */;
+			targetProxy = 9DC41A042F9E000000782FEC /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		9DC417E92F9BE93500782FEC /* Debug */ = {
@@ -251,11 +465,15 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = HolaSwift/HolaSwift.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = LXWR3JHQ9L;
+				DEVELOPMENT_TEAM = RUK95FSH2P;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Config/HolaSwiftInfo.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = rituo.;
+				INFOPLIST_KEY_NFCReaderUsageDescription = "rituo. usa NFC para registrar y validar tu tag fisico de enfoque.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -266,7 +484,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.turi.HolaSwift;
+				PRODUCT_BUNDLE_IDENTIFIER = io.rituo.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -283,11 +501,15 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = HolaSwift/HolaSwift.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = LXWR3JHQ9L;
+				DEVELOPMENT_TEAM = RUK95FSH2P;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Config/HolaSwiftInfo.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = rituo.;
+				INFOPLIST_KEY_NFCReaderUsageDescription = "rituo. usa NFC para registrar y validar tu tag fisico de enfoque.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -298,11 +520,123 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.turi.HolaSwift;
+				PRODUCT_BUNDLE_IDENTIFIER = io.rituo.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		9DC4183C2F9C35F400782FEC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ShieldConfigurationExtension/ShieldConfigurationExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LXWR3JHQ9L;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ShieldConfigurationExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ShieldConfigurationExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.rituo.app.ShieldConfigurationExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9DC4183D2F9C35F400782FEC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ShieldConfigurationExtension/ShieldConfigurationExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LXWR3JHQ9L;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ShieldConfigurationExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = ShieldConfigurationExtension;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.rituo.app.ShieldConfigurationExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		9DC41A0E2F9E000000782FEC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = RituoDeviceActivityMonitor/RituoDeviceActivityMonitor.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LXWR3JHQ9L;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = RituoDeviceActivityMonitor/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.rituo.app.deviceactivitymonitor;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9DC41A0F2F9E000000782FEC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = RituoDeviceActivityMonitor/RituoDeviceActivityMonitor.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LXWR3JHQ9L;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = RituoDeviceActivityMonitor/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.rituo.app.deviceactivitymonitor;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
@@ -331,7 +665,44 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		9DC4183B2F9C35F400782FEC /* Build configuration list for PBXNativeTarget "ShieldConfigurationExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9DC4183C2F9C35F400782FEC /* Debug */,
+				9DC4183D2F9C35F400782FEC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9DC41A102F9E000000782FEC /* Build configuration list for PBXNativeTarget "RituoDeviceActivityMonitor" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9DC41A0E2F9E000000782FEC /* Debug */,
+				9DC41A0F2F9E000000782FEC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		9DC418FF2F9D100000782FEC /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 8.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		9DC419002F9D100000782FEC /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9DC418FF2F9D100000782FEC /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 9DC417D82F9BE93400782FEC /* Project object */;
 }
