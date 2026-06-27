@@ -9,6 +9,11 @@ struct LoginLandingView: View {
     @ObservedObject var authViewModel: AuthViewModel
     @State private var showsLoginOptions = false
     @State private var sheetDragOffset: CGFloat = 0
+    @State private var logoAppeared = false
+    @State private var textAppeared = false
+    @State private var buttonAppeared = false
+    @State private var glows = false
+    @State private var rotates = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -17,52 +22,138 @@ struct LoginLandingView: View {
             ZStack(alignment: .bottom) {
                 RituoAnimatedBackground()
 
+                // Glow central fuerte
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                RituoPalette.white.opacity(glows ? 0.38 : 0.18),
+                                RituoPalette.lightBlue.opacity(glows ? 0.20 : 0.08),
+                                Color.clear
+                            ],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 180
+                        )
+                    )
+                    .frame(width: 380, height: 380)
+                    .blur(radius: 50)
+                    .scaleEffect(glows ? 1.10 : 0.90)
+                    .offset(y: -proxy.size.height * 0.10)
+                    .allowsHitTesting(false)
+
+                // Arco giratorio decorativo
+                Circle()
+                    .trim(from: 0.0, to: 0.28)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                RituoPalette.white.opacity(0.34),
+                                RituoPalette.white.opacity(0.0)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ),
+                        style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
+                    )
+                    .frame(width: min(proxy.size.width * 0.84, 340))
+                    .rotationEffect(.degrees(rotates ? 360 : 0))
+                    .offset(y: -proxy.size.height * 0.10)
+                    .opacity(logoAppeared ? 1 : 0)
+                    .allowsHitTesting(false)
+
+                Circle()
+                    .trim(from: 0.55, to: 0.75)
+                    .stroke(
+                        RituoPalette.mistBlue.opacity(0.22),
+                        style: StrokeStyle(lineWidth: 1, lineCap: .round)
+                    )
+                    .frame(width: min(proxy.size.width * 1.0, 410))
+                    .rotationEffect(.degrees(rotates ? -360 : 0))
+                    .offset(y: -proxy.size.height * 0.10)
+                    .opacity(logoAppeared ? 1 : 0)
+                    .allowsHitTesting(false)
+
                 VStack(spacing: 0) {
                     Spacer()
 
-                    VStack(spacing: 22) {
-                        Image("RituoLogoWhite")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: min(proxy.size.width * 0.48, 238))
+                    VStack(spacing: 32) {
+                        // Logo con glow y anillo
+                        ZStack {
+                            Circle()
+                                .stroke(RituoPalette.white.opacity(glows ? 0.22 : 0.10), lineWidth: 1)
+                                .frame(width: min(proxy.size.width * 0.68, 280))
+                                .scaleEffect(glows ? 1.03 : 0.97)
 
-                        Text("Tus hábitos construyen la persona en la que te conviertes.")
+                            Image("RituoLogoWhite")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: min(proxy.size.width * 0.56, 260))
+                                .shadow(color: RituoPalette.white.opacity(0.50), radius: 32, x: 0, y: 0)
+                                .shadow(color: RituoPalette.white.opacity(0.20), radius: 60, x: 0, y: 0)
+                        }
+                        .opacity(logoAppeared ? 1 : 0)
+                        .scaleEffect(logoAppeared ? 1 : 0.82)
+
+                        Text("Tus hábitos construyen\nla persona en la que te conviertes.")
                             .font(.custom("Helvetica", size: 15).weight(.medium))
-                            .foregroundStyle(RituoPalette.white.opacity(0.86))
+                            .foregroundStyle(RituoPalette.white.opacity(0.78))
                             .multilineTextAlignment(.center)
-                            .lineSpacing(3)
-                            .padding(.horizontal, 52)
+                            .lineSpacing(6)
+                            .padding(.horizontal, 44)
+                            .opacity(textAppeared ? 1 : 0)
+                            .offset(y: textAppeared ? 0 : 18)
                     }
 
                     Spacer()
 
-                    Button {
-                        withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
-                            showsLoginOptions = true
-                            sheetDragOffset = 0
+                    VStack(spacing: 14) {
+                        Button {
+                            withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
+                                showsLoginOptions = true
+                                sheetDragOffset = 0
+                            }
+                        } label: {
+                            Text("Comenzar")
+                                .font(.custom("Helvetica", size: 18).weight(.bold))
+                                .foregroundStyle(RituoPalette.deepOceanBlue)
+                                .frame(maxWidth: .infinity, minHeight: 60)
+                                .background(RituoPalette.white)
+                                .clipShape(Capsule())
+                                .shadow(color: RituoPalette.white.opacity(0.45), radius: 24, x: 0, y: 8)
+                                .shadow(color: Color.black.opacity(0.22), radius: 14, x: 0, y: 6)
                         }
-                    } label: {
-                        HStack(spacing: 10) {
-                            Text("Iniciar sesion o registrarme")
-                                .font(.custom("Helvetica", size: 16).weight(.bold))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.78)
+                        .buttonStyle(LoginPressButtonStyle())
 
-                            Image(systemName: "chevron.up")
-                                .font(.system(size: 14, weight: .bold))
-                        }
-                        .foregroundStyle(RituoPalette.white.opacity(0.94))
-                        .padding(.horizontal, 22)
-                        .frame(minHeight: 48)
-                        .contentShape(Rectangle())
+                        Text("Ya tenés cuenta · Entrá acá")
+                            .font(.custom("Helvetica", size: 13).weight(.semibold))
+                            .foregroundStyle(RituoPalette.white.opacity(0.54))
                     }
-                    .buttonStyle(LoginPressButtonStyle())
-                    .padding(.bottom, 34)
-                    .opacity(showsLoginOptions ? 0 : 1)
+                    .padding(.horizontal, 28)
+                    .padding(.bottom, 44)
+                    .opacity(showsLoginOptions ? 0 : (buttonAppeared ? 1 : 0))
+                    .offset(y: buttonAppeared ? 0 : 24)
                     .allowsHitTesting(!showsLoginOptions)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.bottom, showsLoginOptions ? sheetHeight : 0)
+                .onAppear {
+                    withAnimation(.spring(response: 0.70, dampingFraction: 0.78).delay(0.15)) {
+                        logoAppeared = true
+                    }
+                    withAnimation(.easeOut(duration: 0.60).delay(0.55)) {
+                        textAppeared = true
+                    }
+                    withAnimation(.easeOut(duration: 0.50).delay(0.85)) {
+                        buttonAppeared = true
+                    }
+                    withAnimation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true).delay(0.3)) {
+                        glows = true
+                    }
+                    withAnimation(.linear(duration: 18).repeatForever(autoreverses: false).delay(0.5)) {
+                        rotates = true
+                    }
+                }
 
                 if showsLoginOptions {
                     LoginBottomSheet(
@@ -162,21 +253,21 @@ struct LoginBottomSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             Capsule()
-                .fill(Color(red: 0.81, green: 0.86, blue: 0.90))
-                .frame(width: 78, height: 7)
-                .padding(.top, 30)
+                .fill(Color(red: 0.81, green: 0.86, blue: 0.90).opacity(0.60))
+                .frame(width: 36, height: 5)
+                .padding(.top, 14)
 
             Text("Inicia sesion")
-                .font(.custom("Helvetica", size: 27).weight(.bold))
+                .font(.custom("Helvetica", size: 30).weight(.bold))
                 .foregroundStyle(RituoPalette.deepOceanBlue)
-                .padding(.top, 34)
+                .padding(.top, 36)
 
             Text("Continua para crear tu ritual de foco.")
-                .font(.custom("Helvetica", size: 16).weight(.regular))
-                .foregroundStyle(RituoPalette.darkCanteen)
-                .padding(.top, 12)
+                .font(.custom("Helvetica", size: 15).weight(.regular))
+                .foregroundStyle(RituoPalette.darkCanteen.opacity(0.88))
+                .padding(.top, 8)
 
-            VStack(spacing: 16) {
+            VStack(spacing: 14) {
                 if mode == .social {
                     AppleLandingButton(onCompletion: onAppleCompletion)
 
@@ -227,15 +318,16 @@ struct LoginBottomSheet: View {
                     MessageStrip(text: errorMessage, tint: RituoPalette.danger)
                 }
             }
-            .padding(.top, 30)
+            .padding(.top, 24)
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 30)
+        .padding(.horizontal, 26)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(
-            TopRoundedRectangle(radius: 46)
-                .fill(Color(red: 0.97, green: 0.98, blue: 0.99))
+            TopRoundedRectangle(radius: 40)
+                .fill(Color(red: 0.98, green: 0.99, blue: 1.0))
+                .shadow(color: Color.black.opacity(0.12), radius: 30, x: 0, y: -8)
                 .ignoresSafeArea(edges: .bottom)
         )
     }
@@ -299,9 +391,10 @@ struct EmailPasswordLoginForm: View {
                 }
                 .font(.custom("Helvetica", size: 17).weight(.bold))
                 .foregroundStyle(RituoPalette.white)
-                .frame(maxWidth: .infinity, minHeight: 54)
+                .frame(maxWidth: .infinity, minHeight: 58)
                 .background(RituoPalette.deepOceanBlue)
-                .clipShape(RoundedRectangle(cornerRadius: 27, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .shadow(color: RituoPalette.deepOceanBlue.opacity(0.32), radius: 14, x: 0, y: 6)
             }
             .buttonStyle(LoginPressButtonStyle())
             .disabled(isLoading)
@@ -365,7 +458,7 @@ struct AppleLandingButton: View {
             )
         }
         .buttonStyle(LoginPressButtonStyle())
-        .contentShape(RoundedRectangle(cornerRadius: 27, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 
@@ -433,7 +526,7 @@ struct LandingAuthButton<Icon: View>: View {
             LandingAuthButtonChrome(title: title, icon: icon)
         }
         .buttonStyle(LoginPressButtonStyle())
-        .contentShape(RoundedRectangle(cornerRadius: 27, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 
@@ -455,23 +548,24 @@ struct LandingAuthButtonChrome<Icon: View>: View {
     var body: some View {
         HStack(spacing: 0) {
             icon()
-                .frame(width: 70, alignment: .center)
+                .frame(width: 62, alignment: .center)
 
             Text(title)
-                .font(.custom("Helvetica", size: 18).weight(.bold))
+                .font(.custom("Helvetica", size: 16).weight(.semibold))
                 .foregroundStyle(RituoPalette.deepOceanBlue)
                 .lineLimit(1)
                 .minimumScaleFactor(0.68)
 
             Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, minHeight: 54)
-        .background(isPressed ? RituoPalette.lightBlue.opacity(0.10) : RituoPalette.white)
-        .clipShape(RoundedRectangle(cornerRadius: 27, style: .continuous))
+        .frame(maxWidth: .infinity, minHeight: 60)
+        .background(isPressed ? Color(red: 0.94, green: 0.96, blue: 0.98) : Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 27, style: .continuous)
-                .stroke(isPressed ? RituoPalette.lightBlue.opacity(0.60) : Color(red: 0.84, green: 0.88, blue: 0.92), lineWidth: 1.2)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color(red: 0.88, green: 0.91, blue: 0.95), lineWidth: 1)
         }
+        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 3)
         .scaleEffect(isPressed ? 0.975 : 1)
         .animation(.spring(response: 0.22, dampingFraction: 0.75), value: isPressed)
     }

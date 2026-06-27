@@ -99,11 +99,20 @@ final class DeviceActivityScheduler {
     }
 
     func stopMonitoringCurrentInterval(for scheduler: RitualScheduler, on date: Date = .now) {
-        let weekday = calendar.component(.weekday, from: date)
-        let name = activityName(for: scheduler, weekday: weekday)
-        stopMonitoring([name])
+        let names = _scheduledNames(for: [scheduler])
+        stopMonitoring(names)
+
+        let stoppedNames = names.map(\.rawValue)
+        stoppedNames.forEach {
+            selectionStore.removeSelection(for: $0)
+            metadataStore.removeMetadata(for: $0)
+        }
+
+        let storedNames = defaults.stringArray(forKey: Self.scheduledNamesKey) ?? []
+        let remainingNames = storedNames.filter { !stoppedNames.contains($0) }
+        defaults.set(remainingNames, forKey: Self.scheduledNamesKey)
         defaults.removeObject(forKey: Self.scheduleFingerprintKey)
-        debugStore.log("Monitor pausado manualmente \(name.rawValue).")
+        debugStore.log("Monitores pausados manualmente \(stoppedNames.count) para \(scheduler.title).")
     }
 
     private func stopMonitoring(_ names: [DeviceActivityName]) {

@@ -3,8 +3,13 @@ import FamilyControls
 import Foundation
 import ManagedSettings
 
+private extension ManagedSettingsStore.Name {
+    static let rituo = Self("rituo")
+}
+
 final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
-    private let store = ManagedSettingsStore()
+    private let store = ManagedSettingsStore(named: .rituo)
+    private let legacyStore = ManagedSettingsStore()
     private let selectionStore = SharedRitualSelectionStore()
     private let metadataStore = SharedRitualActivityMetadataStore()
     private let eventStore = SharedRitualActivityEventStore()
@@ -19,6 +24,7 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
             return
         }
 
+        clear(store: legacyStore)
         store.shield.applications = selection.applicationTokens.isEmpty ? nil : selection.applicationTokens
         store.shield.webDomains = selection.webDomainTokens.isEmpty ? nil : selection.webDomainTokens
 
@@ -36,13 +42,21 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
     override func intervalDidEnd(for activity: DeviceActivityName) {
         super.intervalDidEnd(for: activity)
         debugStore.log("intervalDidEnd \(activity.rawValue).")
-        store.clearAllSettings()
+        clear(store: store)
+        clear(store: legacyStore)
         appendEvent(type: "ended", activity: activity)
     }
 
     override func intervalWillStartWarning(for activity: DeviceActivityName) {
         super.intervalWillStartWarning(for: activity)
         debugStore.log("intervalWillStartWarning \(activity.rawValue).")
+    }
+
+    private func clear(store: ManagedSettingsStore) {
+        store.shield.applications = nil
+        store.shield.webDomains = nil
+        store.shield.applicationCategories = nil
+        store.clearAllSettings()
     }
 
     private func appendEvent(type: String, activity: DeviceActivityName) {

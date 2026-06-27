@@ -5,6 +5,7 @@ struct AppleAuthRequest: Encodable {
     let deviceId: String
     let authorizationCode: String?
     let deviceLabel: String
+    let displayName: String?
 }
 
 struct AppleAuthResponse: Decodable {

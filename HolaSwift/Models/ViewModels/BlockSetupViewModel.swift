@@ -55,6 +55,7 @@ final class BlockSetupViewModel: ObservableObject {
     private let registeredTagKey = "rituo.registeredTagIdentifier"
     private let scheduledSuppressionsKey = "rituo.scheduledBlockSuppressions"
     private var activeAccessToken: String?
+    private static let earlyMonitorEndGraceSeconds: TimeInterval = 60
 
     init(
         schedulerStore: SchedulerStore? = nil,
@@ -123,6 +124,14 @@ final class BlockSetupViewModel: ObservableObject {
                 continue
             }
 
+            if Self.isEarlyMonitorEnd(endedEvent, plannedEndAt: startedEvent.plannedEndAt) {
+                groupEvents.forEach { processedIds.insert($0.id) }
+                deviceActivityDebugStore.log(
+                    "Evento monitor ignorado: \(startedEvent.title) termino antes del fin planificado."
+                )
+                continue
+            }
+
             do {
                 let session = try await coreApi.recordRitualSession(
                     accessToken: accessToken,
@@ -185,6 +194,29 @@ final class BlockSetupViewModel: ObservableObject {
         }
     }
 
+    private func applyRenamedNfcClaim(_ claim: NfcTagClaimResponse) {
+        nfcTagClaims = nfcTagClaims.map { currentClaim in
+            currentClaim.id == claim.id ? claim : currentClaim
+        }
+    }
+
+    private func refreshNfcClaimsAndConfirmLabel(
+        _ label: String,
+        accessToken: String
+    ) async -> Bool {
+        do {
+            let claims = try await coreApi.listNfcTagClaims(accessToken: accessToken)
+            applyNfcClaims(claims)
+
+            return claims.contains { claim in
+                claim.label?.trimmingCharacters(in: .whitespacesAndNewlines) == label
+            }
+        } catch {
+            print("Core nfc rename refresh error:", error)
+            return false
+        }
+    }
+
     private func reloadNfcClaimsAfterStaleClaim(accessToken: String) async {
         do {
             let claims = try await coreApi.listNfcTagClaims(accessToken: accessToken)
@@ -234,6 +266,7 @@ final class BlockSetupViewModel: ObservableObject {
                 coreSyncMessage = "Sesión activa en core-api: \(activeCoreSession.id)."
             }
         } catch {
+            activeCoreSession = nil
             print("Core active ritual session error:", error)
         }
     }
@@ -281,6 +314,21 @@ final class BlockSetupViewModel: ObservableObject {
         return ritualSessionsByRitualId[coreRitualId] ?? []
     }
 
+    func isRunningInCore(_ scheduler: RitualScheduler) -> Bool {
+        guard let coreRitualId = scheduler.coreRitualId,
+              let activeCoreSession else {
+            return false
+        }
+
+        return activeCoreSession.ritualId == coreRitualId && activeCoreSession.status == "active"
+    }
+
+    func refreshRitualSessionState(accessToken: String) async {
+        await loadActiveRitualSession(accessToken: accessToken)
+        await loadRitualSessionSummary(accessToken: accessToken)
+        await loadRitualSessionHistories(accessToken: accessToken)
+    }
+
     var isAuthorized: Bool {
         authorizer.status == .approved
     }
@@ -298,7 +346,7 @@ final class BlockSetupViewModel: ObservableObject {
     }
 
     var canEndBlockWithTag: Bool {
-        isBlocking && hasClaimedNfcTag && !isReadingTag
+        hasActiveBlockingContext && hasClaimedNfcTag && !isReadingTag
     }
 
     var hasClaimedNfcTag: Bool {
@@ -353,6 +401,10 @@ final class BlockSetupViewModel: ObservableObject {
 
     var currentBlockingScheduler: RitualScheduler? {
         activeSchedulerForCurrentBlock()
+    }
+
+    private var hasActiveBlockingContext: Bool {
+        isBlocking || activeCoreSession != nil || activeScheduler != nil
     }
 
     var selectionSummary: String {
@@ -556,11 +608,16 @@ final class BlockSetupViewModel: ObservableObject {
                 accessToken: accessToken
             )
 
-            let claims = try await coreApi.listNfcTagClaims(accessToken: accessToken)
-            applyNfcClaims(claims)
+            applyRenamedNfcClaim(updatedClaim)
+            _ = await refreshNfcClaimsAndConfirmLabel(cleanLabel, accessToken: accessToken)
 
             tagMessage = "Tag renombrado como \(updatedClaim.label ?? cleanLabel)."
         } catch {
+            if await refreshNfcClaimsAndConfirmLabel(cleanLabel, accessToken: accessToken) {
+                tagMessage = "Tag renombrado como \(cleanLabel)."
+                return
+            }
+
             tagMessage = error.localizedDescription
         }
     }
@@ -601,8 +658,9 @@ final class BlockSetupViewModel: ObservableObject {
             return
         }
 
-        guard isBlocking else {
+        guard hasActiveBlockingContext else {
             tagMessage = "No hay ningun bloqueo activo para terminar."
+            deviceActivityDebugStore.log("NFC local cancelado: sin contexto activo.")
             return
         }
 
@@ -631,8 +689,9 @@ final class BlockSetupViewModel: ObservableObject {
     }
 
     func endBlockWithVerifiedTag(accessToken: String?) {
-        guard isBlocking else {
+        guard hasActiveBlockingContext else {
             tagMessage = "No hay ningun bloqueo activo para terminar."
+            deviceActivityDebugStore.log("NFC verify cancelado: sin contexto activo.")
             return
         }
 
@@ -640,6 +699,8 @@ final class BlockSetupViewModel: ObservableObject {
             endBlockWithTag()
             return
         }
+
+        activeAccessToken = accessToken
 
         guard hasClaimedNfcTag else {
             tagMessage = "Primero vincula un tag NFC desde Perfil."
@@ -702,11 +763,13 @@ final class BlockSetupViewModel: ObservableObject {
 
         if shouldSuppressScheduledBlock(source: source, endSource: endSource, scheduler: scheduler) {
             suppressCurrentScheduledBlockIfNeeded(scheduler: scheduler)
+        } else if scheduler == nil {
+            deviceActivityDebugStore.log("Terminando bloqueo sin scheduler asociado.")
         }
 
         deviceActivityDebugStore.log("Terminando bloqueo endSource=\(endSource) scheduler=\(scheduler?.title ?? "sin scheduler").")
         finishCoreRitualSessionIfPossible(status: "cancelled", endSource: endSource)
-        blocker.clearShield()
+        clearActiveShield()
         notificationService.sendRitualStoppedNotification(for: scheduler, endSource: endSource)
         isBlocking = false
         activeBlockSource = nil
@@ -990,14 +1053,75 @@ final class BlockSetupViewModel: ObservableObject {
                     isProtected: ritual.isProtected,
                     nfcUnlockEnabled: ritual.nfcUnlockEnabled
                 )
+            } else if let index = schedulers.firstIndex(where: { scheduler in
+                scheduler.coreRitualId == nil &&
+                schedulerMatchesCoreRitual(scheduler, ritual)
+            }) {
+                let localSelection = schedulers[index].selection
+                let localId = schedulers[index].id
+                let syncedScheduler = RitualScheduler(response: ritual, preserving: localSelection)
+                schedulers[index] = RitualScheduler(
+                    id: localId,
+                    coreRitualId: ritual.id,
+                    title: syncedScheduler.title,
+                    detail: syncedScheduler.detail,
+                    focusTarget: syncedScheduler.focusTarget,
+                    symbolName: syncedScheduler.symbolName,
+                    startHour: syncedScheduler.startHour,
+                    startMinute: syncedScheduler.startMinute,
+                    endHour: syncedScheduler.endHour,
+                    endMinute: syncedScheduler.endMinute,
+                    weekdays: syncedScheduler.weekdays,
+                    selection: localSelection,
+                    isProtected: syncedScheduler.isProtected,
+                    nfcUnlockEnabled: syncedScheduler.nfcUnlockEnabled
+                )
             } else {
                 schedulers.append(RitualScheduler(response: ritual))
             }
         }
 
+        schedulers = deduplicatedSchedulers(schedulers)
         schedulerStore.save(schedulers)
         rescheduleDeviceActivities()
         refreshScheduledRitualState()
+    }
+
+    private func schedulerMatchesCoreRitual(
+        _ scheduler: RitualScheduler,
+        _ ritual: RitualResponse
+    ) -> Bool {
+        let responseScheduler = RitualScheduler(response: ritual)
+        return scheduler.title == responseScheduler.title &&
+            scheduler.startHour == responseScheduler.startHour &&
+            scheduler.startMinute == responseScheduler.startMinute &&
+            scheduler.endHour == responseScheduler.endHour &&
+            scheduler.endMinute == responseScheduler.endMinute &&
+            scheduler.weekdays.sorted() == responseScheduler.weekdays.sorted()
+    }
+
+    private func deduplicatedSchedulers(_ schedulers: [RitualScheduler]) -> [RitualScheduler] {
+        var seenCoreIds = Set<String>()
+        var seenLocalKeys = Set<String>()
+        var result: [RitualScheduler] = []
+
+        for scheduler in schedulers {
+            if let coreRitualId = scheduler.coreRitualId {
+                guard seenCoreIds.insert(coreRitualId).inserted else { continue }
+            } else {
+                let key = [
+                    scheduler.title,
+                    "\(scheduler.startHour):\(scheduler.startMinute)",
+                    "\(scheduler.endHour):\(scheduler.endMinute)",
+                    scheduler.weekdays.sorted().map(String.init).joined(separator: ",")
+                ].joined(separator: "|")
+                guard seenLocalKeys.insert(key).inserted else { continue }
+            }
+
+            result.append(scheduler)
+        }
+
+        return result
     }
 
     private func rescheduleDeviceActivities() {
@@ -1054,7 +1178,7 @@ final class BlockSetupViewModel: ObservableObject {
         let scheduler = activeSchedulerForCurrentBlock()
         let source = activeBlockSource
         finishCoreRitualSessionIfPossible(status: "completed", endSource: "timer")
-        blocker.clearShield()
+        clearActiveShield()
         if case .scheduled = source {
             // The scheduled notification already announces the end of the ritual.
         } else {
@@ -1104,6 +1228,10 @@ final class BlockSetupViewModel: ObservableObject {
         case .scheduled(let schedulerID):
             return schedulers.first { $0.id == schedulerID }
         case nil:
+            if let ritualId = activeCoreSession?.ritualId,
+               let scheduler = schedulers.first(where: { $0.coreRitualId == ritualId }) {
+                return scheduler
+            }
             return selectedScheduler ?? activeScheduler
         }
     }
@@ -1158,7 +1286,7 @@ final class BlockSetupViewModel: ObservableObject {
             )
         }
 
-        blocker.clearShield()
+        clearActiveShield()
         isBlocking = false
         activeBlockSource = nil
         blockedUntil = nil
@@ -1239,19 +1367,60 @@ final class BlockSetupViewModel: ObservableObject {
         }
     }
 
+    private func clearActiveShield() {
+        deviceActivityDebugStore.log("Liberando ManagedSettings.")
+        blocker.clearShield()
+
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self?.blocker.clearShield()
+            }
+        }
+
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self?.blocker.clearShield()
+            }
+        }
+
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self?.blocker.clearShield()
+            }
+        }
+    }
+
     private func finishCoreRitualSessionIfPossible(status: String, endSource: String) {
-        guard let session = activeCoreSession,
-              let accessToken = activeAccessToken,
+        guard let accessToken = activeAccessToken,
               !accessToken.isEmpty else {
             return
         }
 
+        let knownSession = activeCoreSession
         activeCoreSession = nil
 
         Task { [weak self] in
             guard let self else { return }
 
             do {
+                let session: RitualSessionResponse
+
+                if let knownSession {
+                    session = knownSession
+                } else if let activeSession = try await self.coreApi.getActiveRitualSession(accessToken: accessToken) {
+                    session = activeSession
+                } else {
+                self.coreSyncMessage = "No habia sesión activa en core-api para finalizar."
+                    await self.refreshRitualSessionState(accessToken: accessToken)
+                    return
+                }
+
                 let finishedSession = try await self.coreApi.finishRitualSession(
                     accessToken: accessToken,
                     sessionId: session.id,
@@ -1259,8 +1428,8 @@ final class BlockSetupViewModel: ObservableObject {
                 )
 
                 self.coreSyncMessage = "Sesión de ritual finalizada."
-                await self.loadRitualSessionSummary(accessToken: accessToken)
-                await self.loadRitualSessionHistories(accessToken: accessToken)
+                self.activeCoreSession = nil
+                await self.refreshRitualSessionState(accessToken: accessToken)
                 print("Core ritual session finished:", finishedSession.id)
             } catch {
                 self.coreSyncMessage = error.localizedDescription
@@ -1273,6 +1442,14 @@ final class BlockSetupViewModel: ObservableObject {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.string(from: date)
+    }
+
+    private static func isEarlyMonitorEnd(
+        _ endedEvent: SharedRitualActivityEvent,
+        plannedEndAt: Date?
+    ) -> Bool {
+        guard let plannedEndAt else { return false }
+        return endedEvent.occurredAt < plannedEndAt.addingTimeInterval(-earlyMonitorEndGraceSeconds)
     }
 
     private func updateRemainingTime() {

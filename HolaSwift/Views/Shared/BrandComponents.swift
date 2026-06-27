@@ -8,26 +8,26 @@ struct BrandScreenHeader: View {
     let quote: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 26) {
+        VStack(alignment: .leading, spacing: 22) {
             HStack(alignment: .center) {
                 Image("RituoLogoWhite")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 118)
+                    .frame(width: 112)
                 Spacer()
                 Text(eyebrow.uppercased())
-                    .font(.custom("Helvetica", size: 10).weight(.bold))
-                    .tracking(2.8)
-                    .foregroundStyle(RituoPalette.mistBlue.opacity(0.78))
+                    .font(.custom("Helvetica", size: 9).weight(.bold))
+                    .tracking(3.0)
+                    .foregroundStyle(RituoPalette.mistBlue.opacity(0.72))
             }
 
-            Text("“\(quote)”")
-                .font(.custom("Helvetica", size: 15).weight(.bold))
-                .foregroundStyle(RituoPalette.white.opacity(0.94))
+            Text("\u{201C}\(quote)\u{201D}")
+                .font(.custom("Helvetica", size: 14).weight(.medium))
+                .foregroundStyle(RituoPalette.white.opacity(0.88))
                 .multilineTextAlignment(.center)
-                .lineSpacing(5)
+                .lineSpacing(6)
                 .frame(maxWidth: .infinity)
-                .padding(.horizontal, 8)
+                .padding(.horizontal, 12)
         }
     }
 }

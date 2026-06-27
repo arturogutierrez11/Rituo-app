@@ -1,163 +1,106 @@
 import SwiftUI
 
+// Reemplazo directo de Views/Navigation/RituoTabBar.swift
+// Solo cambia el aspecto visual. La API (RituoFloatingTabBar(selectedTab:)) y
+// el uso de RootTab / RituoPalette quedan idénticos.
+
 struct RituoFloatingTabBar: View {
     @Binding var selectedTab: RootTab
-    @Namespace private var activeNamespace
+    @Namespace private var ns
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 0) {
             ForEach(RootTab.allCases, id: \.self) { tab in
-                Button {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                        selectedTab = tab
+                RituoTabItem(tab: tab, isSelected: selectedTab == tab, namespace: ns)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.34, dampingFraction: 0.74)) {
+                            selectedTab = tab
+                        }
                     }
-                } label: {
-                    RituoFloatingTabBarItem(
-                        tab: tab,
-                        isSelected: selectedTab == tab,
-                        namespace: activeNamespace
-                    )
-                }
-                .buttonStyle(RituoTabButtonStyle())
             }
         }
         .padding(8)
-        .background(RituoTabBarBackground())
-        .clipShape(Capsule())
-        .overlay {
-            Capsule()
-                .stroke(
+        .background {
+            ZStack {
+                Capsule(style: .continuous).fill(.ultraThinMaterial)
+                Capsule(style: .continuous).fill(
                     LinearGradient(
                         colors: [
-                            RituoPalette.white.opacity(0.54),
-                            RituoPalette.mistBlue.opacity(0.22),
-                            RituoPalette.white.opacity(0.06)
+                            Color(red: 0.10, green: 0.14, blue: 0.26).opacity(0.78),
+                            Color(red: 0.05, green: 0.07, blue: 0.16).opacity(0.86)
                         ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
-        }
-        .overlay(alignment: .top) {
-            Capsule()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            RituoPalette.white.opacity(0.18),
-                            Color.clear
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
+                        startPoint: .topLeading, endPoint: .bottomTrailing
                     )
                 )
-                .frame(height: 22)
-                .padding(.horizontal, 16)
-                .blur(radius: 5)
-                .allowsHitTesting(false)
+                Capsule(style: .continuous).fill(
+                    LinearGradient(
+                        colors: [RituoPalette.white.opacity(0.12), .clear],
+                        startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.55)
+                    )
+                )
+            }
         }
-        .shadow(color: Color.black.opacity(0.32), radius: 24, x: 0, y: 13)
-        .shadow(color: RituoPalette.lightBlue.opacity(0.18), radius: 20, x: 0, y: -5)
+        .overlay {
+            Capsule(style: .continuous).stroke(
+                LinearGradient(
+                    colors: [RituoPalette.white.opacity(0.30), RituoPalette.white.opacity(0.06)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                ),
+                lineWidth: 1
+            )
+        }
+        .shadow(color: .black.opacity(0.46), radius: 30, x: 0, y: 16)
+        .shadow(color: RituoPalette.lightBlue.opacity(0.10), radius: 18, x: 0, y: -2)
         .padding(.horizontal, 18)
         .padding(.top, 8)
         .padding(.bottom, 10)
     }
 }
 
-private struct RituoTabBarBackground: View {
-    var body: some View {
-        ZStack {
-            Rectangle()
-                .fill(.ultraThinMaterial)
+// MARK: - Tab item
 
-            LinearGradient(
-                colors: [
-                    Color(red: 0.28, green: 0.35, blue: 0.52).opacity(0.70),
-                    Color(red: 0.12, green: 0.17, blue: 0.30).opacity(0.82)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            LinearGradient(
-                colors: [
-                    RituoPalette.white.opacity(0.18),
-                    Color.clear
-                ],
-                startPoint: .top,
-                endPoint: .center
-            )
-        }
-    }
-}
-
-struct RituoFloatingTabBarItem: View {
+private struct RituoTabItem: View {
     let tab: RootTab
     let isSelected: Bool
     let namespace: Namespace.ID
 
     var body: some View {
         VStack(spacing: 4) {
-            Image(systemName: tab.symbolName)
-                .symbolRenderingMode(.monochrome)
-                .font(.system(size: 20, weight: isSelected ? .semibold : .medium))
-                .frame(height: 23)
+            ZStack {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [RituoPalette.white.opacity(0.24), RituoPalette.lightBlue.opacity(0.12)],
+                                startPoint: .topLeading, endPoint: .bottomTrailing
+                            )
+                        )
+                        .matchedGeometryEffect(id: "pill", in: namespace)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .stroke(RituoPalette.white.opacity(0.26), lineWidth: 1)
+                        }
+                        .shadow(color: .black.opacity(0.20), radius: 8, y: 3)
+                        .frame(height: 38)
+                        .padding(.horizontal, 6)
+                }
+
+                Image(systemName: isSelected ? tab.selectedSymbolName : tab.symbolName)
+                    .font(.system(size: 19, weight: isSelected ? .semibold : .regular))
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(isSelected ? RituoPalette.white : RituoPalette.white.opacity(0.34))
+                    .scaleEffect(isSelected ? 1.04 : 1)
+            }
+            .frame(height: 38)
 
             Text(tab.title)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .lineLimit(1)
-                .minimumScaleFactor(0.84)
+                .font(.custom("Helvetica", size: 10).weight(isSelected ? .bold : .medium))
+                .foregroundStyle(isSelected ? RituoPalette.white : RituoPalette.white.opacity(0.34))
         }
-        .foregroundStyle(
-            isSelected
-            ? RituoPalette.white
-            : RituoPalette.white.opacity(0.86)
-        )
         .frame(maxWidth: .infinity)
-        .frame(height: 62)
-        .background {
-            if isSelected {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                RituoPalette.white.opacity(0.20),
-                                RituoPalette.mistBlue.opacity(0.10),
-                                RituoPalette.deepOceanBlue.opacity(0.14)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .matchedGeometryEffect(id: "active-tab", in: namespace)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [
-                                        RituoPalette.white.opacity(0.26),
-                                        RituoPalette.white.opacity(0.04)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1
-                            )
-                    }
-                    .shadow(color: Color.black.opacity(0.12), radius: 8, y: 4)
-            }
-        }
-        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .opacity(isSelected ? 1 : 0.92)
-        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: isSelected)
-    }
-}
-
-private struct RituoTabButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.94 : 1)
-            .opacity(configuration.isPressed ? 0.78 : 1)
-            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: configuration.isPressed)
+        .frame(height: 56)
+        .contentShape(Rectangle())
+        .animation(.spring(response: 0.30, dampingFraction: 0.76), value: isSelected)
     }
 }

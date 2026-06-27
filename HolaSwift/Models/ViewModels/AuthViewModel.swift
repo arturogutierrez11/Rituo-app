@@ -61,7 +61,8 @@ final class AuthViewModel: ObservableObject {
                 identityToken: identityToken,
                 authorizationCode: authorizationCode,
                 deviceId: deviceId,
-                deviceLabel: deviceLabel
+                deviceLabel: deviceLabel,
+                displayName: displayName
             )
 
             persistSession(

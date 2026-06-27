@@ -35,7 +35,8 @@ final class AuthAPIClient {
         identityToken: String,
         authorizationCode: String?,
         deviceId: String,
-        deviceLabel: String
+        deviceLabel: String,
+        displayName: String?
     ) async throws -> AppleAuthResponse {
         guard let url = URL(string: "\(baseURLString)/auth/apple") else {
             throw AuthAPIError.invalidURL
@@ -45,7 +46,8 @@ final class AuthAPIClient {
             identityToken: identityToken,
             deviceId: deviceId,
             authorizationCode: authorizationCode,
-            deviceLabel: deviceLabel
+            deviceLabel: deviceLabel,
+            displayName: displayName
         )
 
         var request = URLRequest(url: url)

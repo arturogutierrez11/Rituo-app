@@ -230,16 +230,25 @@ struct MessageStrip: View {
         HStack(spacing: 10) {
             Circle()
                 .fill(tint)
-                .frame(width: 8, height: 8)
+                .frame(width: 7, height: 7)
+                .shadow(color: tint.opacity(0.40), radius: 4)
             Text(text)
                 .font(.custom("Helvetica", size: 13).weight(.medium))
                 .foregroundStyle(RituoPalette.subtext)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(12)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(tint.opacity(0.09))
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(tint.opacity(0.08))
         )
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(tint.opacity(0.18), lineWidth: 1)
+        }
     }
 }
 
