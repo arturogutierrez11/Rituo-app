@@ -16,6 +16,7 @@ struct HolaSwiftApp: App {
     private static let notificationDelegate = RituoNotificationDelegate()
 
     init() {
+        CrashReportingService.configure()
         GIDSignIn.sharedInstance.configuration = GIDConfiguration(
             clientID: GoogleSignInConfig.clientID
         )

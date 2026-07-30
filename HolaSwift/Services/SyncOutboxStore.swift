@@ -300,6 +300,13 @@ final class SyncOutboxStore {
             logger.error(
                 "No se pudo abrir el outbox persistente. Se intentará recuperar: \(error.localizedDescription, privacy: .public)"
             )
+            CrashReportingService.record(
+                error,
+                context: [
+                    "component": "sync_outbox",
+                    "recovery_stage": "open_persistent_store"
+                ]
+            )
         }
 
         quarantineStore(at: configuration.url)
@@ -315,6 +322,13 @@ final class SyncOutboxStore {
             logger.fault(
                 "No se pudo reconstruir el outbox persistente. Se usará memoria temporal: \(error.localizedDescription, privacy: .public)"
             )
+            CrashReportingService.record(
+                error,
+                context: [
+                    "component": "sync_outbox",
+                    "recovery_stage": "rebuild_persistent_store"
+                ]
+            )
         }
 
         do {
@@ -329,6 +343,13 @@ final class SyncOutboxStore {
         } catch {
             logger.fault(
                 "El outbox temporal tampoco está disponible. La app continuará sin cola local: \(error.localizedDescription, privacy: .public)"
+            )
+            CrashReportingService.record(
+                error,
+                context: [
+                    "component": "sync_outbox",
+                    "recovery_stage": "open_memory_store"
+                ]
             )
             return nil
         }
@@ -373,6 +394,13 @@ final class SyncOutboxStore {
         } catch {
             logger.error(
                 "No se pudo poner en cuarentena el outbox dañado: \(error.localizedDescription, privacy: .public)"
+            )
+            CrashReportingService.record(
+                error,
+                context: [
+                    "component": "sync_outbox",
+                    "recovery_stage": "quarantine_store"
+                ]
             )
         }
     }
