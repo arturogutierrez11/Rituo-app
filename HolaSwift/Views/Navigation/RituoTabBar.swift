@@ -1,60 +1,61 @@
 import SwiftUI
 
-// Reemplazo directo de Views/Navigation/RituoTabBar.swift
-// Solo cambia el aspecto visual. La API (RituoFloatingTabBar(selectedTab:)) y
-// el uso de RootTab / RituoPalette quedan idénticos.
-
 struct RituoFloatingTabBar: View {
     @Binding var selectedTab: RootTab
     @Namespace private var ns
 
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(RootTab.allCases, id: \.self) { tab in
-                RituoTabItem(tab: tab, isSelected: selectedTab == tab, namespace: ns)
+        GeometryReader { geo in
+            HStack(spacing: 0) {
+                ForEach(RootTab.allCases, id: \.self) { tab in
+                    RituoTabItem(
+                        tab: tab,
+                        isSelected: selectedTab == tab,
+                        namespace: ns
+                    )
+                    .frame(width: geo.size.width / CGFloat(RootTab.allCases.count))
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        withAnimation(.spring(response: 0.34, dampingFraction: 0.74)) {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
                             selectedTab = tab
                         }
                     }
+                }
+            }
+            .padding(.vertical, 12)
+            .background {
+                Capsule(style: .continuous)
+                    .fill(Color(red: 0.11, green: 0.14, blue: 0.24))
+                    .shadow(color: .black.opacity(0.48), radius: 24, x: 0, y: 8)
+            }
+            .overlay {
+                Capsule(style: .continuous)
+                    .stroke(RituoPalette.white.opacity(0.09), lineWidth: 1)
             }
         }
-        .padding(8)
-        .background {
-            ZStack {
-                Capsule(style: .continuous).fill(.ultraThinMaterial)
-                Capsule(style: .continuous).fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.10, green: 0.14, blue: 0.26).opacity(0.78),
-                            Color(red: 0.05, green: 0.07, blue: 0.16).opacity(0.86)
-                        ],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
-                    )
-                )
-                Capsule(style: .continuous).fill(
-                    LinearGradient(
-                        colors: [RituoPalette.white.opacity(0.12), .clear],
-                        startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.55)
-                    )
-                )
-            }
+        .frame(height: 66)
+        .padding(.horizontal, 20)
+        .padding(.bottom, 22)
+    }
+}
+
+// MARK: - Rituo symbol icon (ø)
+
+private struct RituoSymbolIcon: View {
+    let size: CGFloat
+    let opacity: Double
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .strokeBorder(RituoPalette.white.opacity(opacity), lineWidth: size * 0.13)
+                .frame(width: size, height: size)
+            Rectangle()
+                .fill(RituoPalette.white.opacity(opacity))
+                .frame(width: size * 1.18, height: size * 0.13)
+                .clipShape(Capsule())
         }
-        .overlay {
-            Capsule(style: .continuous).stroke(
-                LinearGradient(
-                    colors: [RituoPalette.white.opacity(0.30), RituoPalette.white.opacity(0.06)],
-                    startPoint: .topLeading, endPoint: .bottomTrailing
-                ),
-                lineWidth: 1
-            )
-        }
-        .shadow(color: .black.opacity(0.46), radius: 30, x: 0, y: 16)
-        .shadow(color: RituoPalette.lightBlue.opacity(0.10), radius: 18, x: 0, y: -2)
-        .padding(.horizontal, 18)
-        .padding(.top, 8)
-        .padding(.bottom, 10)
+        .frame(width: size, height: size)
     }
 }
 
@@ -66,41 +67,43 @@ private struct RituoTabItem: View {
     let namespace: Namespace.ID
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 5) {
+            // Icon
             ZStack {
+                // Glow behind selected icon
                 if isSelected {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [RituoPalette.white.opacity(0.24), RituoPalette.lightBlue.opacity(0.12)],
-                                startPoint: .topLeading, endPoint: .bottomTrailing
-                            )
-                        )
-                        .matchedGeometryEffect(id: "pill", in: namespace)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .stroke(RituoPalette.white.opacity(0.26), lineWidth: 1)
-                        }
-                        .shadow(color: .black.opacity(0.20), radius: 8, y: 3)
-                        .frame(height: 38)
-                        .padding(.horizontal, 6)
+                    Circle()
+                        .fill(RituoPalette.white.opacity(0.10))
+                        .blur(radius: 8)
+                        .frame(width: 36, height: 36)
+                        .matchedGeometryEffect(id: "glow", in: namespace)
                 }
 
-                Image(systemName: isSelected ? tab.selectedSymbolName : tab.symbolName)
-                    .font(.system(size: 19, weight: isSelected ? .semibold : .regular))
-                    .symbolRenderingMode(.monochrome)
-                    .foregroundStyle(isSelected ? RituoPalette.white : RituoPalette.white.opacity(0.34))
-                    .scaleEffect(isSelected ? 1.04 : 1)
+                if tab == .home {
+                    RituoSymbolIcon(size: 20, opacity: isSelected ? 1.0 : 0.30)
+                } else {
+                    Image(systemName: isSelected ? tab.selectedSymbolName : tab.symbolName)
+                        .font(.system(size: 20, weight: isSelected ? .semibold : .regular))
+                        .symbolRenderingMode(.monochrome)
+                        .foregroundStyle(isSelected ? RituoPalette.white : RituoPalette.white.opacity(0.30))
+                        .scaleEffect(isSelected ? 1.08 : 1.0)
+                }
             }
-            .frame(height: 38)
+            .frame(width: 28, height: 28)
 
+            // Label
             Text(tab.title)
-                .font(.custom("Helvetica", size: 10).weight(isSelected ? .bold : .medium))
-                .foregroundStyle(isSelected ? RituoPalette.white : RituoPalette.white.opacity(0.34))
+                .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
+                .foregroundStyle(isSelected ? RituoPalette.white : RituoPalette.white.opacity(0.30))
+
+            // Active dot
+            Circle()
+                .fill(RituoPalette.white)
+                .frame(width: 3, height: 3)
+                .opacity(isSelected ? 1 : 0)
+                .scaleEffect(isSelected ? 1 : 0.3)
+                .shadow(color: RituoPalette.white.opacity(0.80), radius: 4)
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: 56)
-        .contentShape(Rectangle())
-        .animation(.spring(response: 0.30, dampingFraction: 0.76), value: isSelected)
+        .animation(.spring(response: 0.30, dampingFraction: 0.72), value: isSelected)
     }
 }

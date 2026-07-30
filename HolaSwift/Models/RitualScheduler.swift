@@ -16,6 +16,9 @@ struct RitualScheduler: Identifiable, Hashable, Codable {
     let selection: FamilyActivitySelection
     let isProtected: Bool
     let nfcUnlockEnabled: Bool
+    let strictModeEnabled: Bool
+    let blockAppInstallation: Bool
+    let blockAdultContent: Bool
 
     init(
         id: UUID = UUID(),
@@ -31,7 +34,10 @@ struct RitualScheduler: Identifiable, Hashable, Codable {
         weekdays: [Int],
         selection: FamilyActivitySelection,
         isProtected: Bool = false,
-        nfcUnlockEnabled: Bool = false
+        nfcUnlockEnabled: Bool = false,
+        strictModeEnabled: Bool = false,
+        blockAppInstallation: Bool = false,
+        blockAdultContent: Bool = false
     ) {
         self.id = id
         self.coreRitualId = coreRitualId
@@ -47,6 +53,9 @@ struct RitualScheduler: Identifiable, Hashable, Codable {
         self.selection = selection
         self.isProtected = isProtected
         self.nfcUnlockEnabled = nfcUnlockEnabled
+        self.strictModeEnabled = strictModeEnabled
+        self.blockAppInstallation = blockAppInstallation
+        self.blockAdultContent = blockAdultContent
     }
 
     var durationMinutes: Int {
@@ -76,7 +85,15 @@ struct RitualScheduler: Identifiable, Hashable, Codable {
     var isLegacyDemoScheduler: Bool {
         coreRitualId == nil &&
         selectedItemCount == 0 &&
-        ["Lectura", "Deep Work", "Sleep Wind-down", "Gym"].contains(title)
+        [
+            "Lectura",
+            "Trabajo profundo",
+            "Descanso nocturno",
+            "Gimnasio",
+            "Deep Work",
+            "Sleep Wind-down",
+            "Gym"
+        ].contains(title)
     }
 
     var timeRangeText: String {
@@ -132,20 +149,7 @@ struct RitualScheduler: Identifiable, Hashable, Codable {
     }
 
     private static func format(hour: Int, minute: Int) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "es_AR")
-        formatter.dateFormat = "h:mm a"
-
-        var components = DateComponents()
-        components.calendar = Calendar.current
-        components.year = 2026
-        components.month = 1
-        components.day = 1
-        components.hour = hour
-        components.minute = minute
-
-        let date = components.date ?? .now
-        return formatter.string(from: date).lowercased()
+        String(format: "%02d:%02d", hour, minute)
     }
 
     static func selectionDigest(for selection: FamilyActivitySelection) -> String {
@@ -204,7 +208,36 @@ extension RitualScheduler {
             weekdays: response.weekdays.sorted(),
             selection: selection,
             isProtected: response.isProtected,
-            nfcUnlockEnabled: response.nfcUnlockEnabled
+            nfcUnlockEnabled: response.nfcUnlockEnabled,
+            strictModeEnabled: false,
+            blockAppInstallation: false,
+            blockAdultContent: false
+        )
+    }
+
+    func withProtection(
+        strictModeEnabled: Bool,
+        blockAppInstallation: Bool,
+        blockAdultContent: Bool
+    ) -> RitualScheduler {
+        RitualScheduler(
+            id: id,
+            coreRitualId: coreRitualId,
+            title: title,
+            detail: detail,
+            focusTarget: focusTarget,
+            symbolName: symbolName,
+            startHour: startHour,
+            startMinute: startMinute,
+            endHour: endHour,
+            endMinute: endMinute,
+            weekdays: weekdays,
+            selection: selection,
+            isProtected: isProtected,
+            nfcUnlockEnabled: nfcUnlockEnabled,
+            strictModeEnabled: strictModeEnabled,
+            blockAppInstallation: blockAppInstallation,
+            blockAdultContent: blockAdultContent
         )
     }
 
@@ -320,6 +353,9 @@ extension RitualScheduler {
         case selection
         case isProtected
         case nfcUnlockEnabled
+        case strictModeEnabled
+        case blockAppInstallation
+        case blockAdultContent
     }
 
     init(from decoder: Decoder) throws {
@@ -339,7 +375,10 @@ extension RitualScheduler {
             weekdays: try container.decode([Int].self, forKey: .weekdays),
             selection: try container.decode(FamilyActivitySelection.self, forKey: .selection),
             isProtected: try container.decodeIfPresent(Bool.self, forKey: .isProtected) ?? false,
-            nfcUnlockEnabled: try container.decodeIfPresent(Bool.self, forKey: .nfcUnlockEnabled) ?? false
+            nfcUnlockEnabled: try container.decodeIfPresent(Bool.self, forKey: .nfcUnlockEnabled) ?? false,
+            strictModeEnabled: try container.decodeIfPresent(Bool.self, forKey: .strictModeEnabled) ?? false,
+            blockAppInstallation: try container.decodeIfPresent(Bool.self, forKey: .blockAppInstallation) ?? false,
+            blockAdultContent: try container.decodeIfPresent(Bool.self, forKey: .blockAdultContent) ?? false
         )
     }
 }

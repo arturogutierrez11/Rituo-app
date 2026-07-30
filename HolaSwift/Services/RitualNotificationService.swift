@@ -2,22 +2,44 @@ import Foundation
 import UserNotifications
 
 final class RitualNotificationService {
+    private static let scheduledIdentifiersKey = "rituo.ritual.notifications.scheduledIdentifiers"
+
     private let center = UNUserNotificationCenter.current()
     private let calendar = Calendar.current
     private let debugStore = DeviceActivityDebugStore()
+    private let defaults: UserDefaults
 
-    func requestAuthorization() {
-        center.requestAuthorization(options: [.alert, .sound, .badge]) { [debugStore] granted, error in
-            if let error {
-                debugStore.log("Error permiso notificaciones: \(error.localizedDescription)")
-                return
-            }
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
 
+    func requestAuthorization() async -> Bool {
+        do {
+            let granted = try await center.requestAuthorization(
+                options: [.alert, .sound, .badge]
+            )
             debugStore.log("Permiso notificaciones: \(granted ? "aprobado" : "rechazado")")
+            return granted
+        } catch {
+            debugStore.log("Error permiso notificaciones: \(error.localizedDescription)")
+            return false
         }
     }
 
+    func authorizationStatus() async -> UNAuthorizationStatus {
+        await center.notificationSettings().authorizationStatus
+    }
+
     func rescheduleNotifications(for schedulers: [RitualScheduler]) {
+        let previousIdentifiers = defaults.stringArray(
+            forKey: Self.scheduledIdentifiersKey
+        ) ?? []
+        if !previousIdentifiers.isEmpty {
+            center.removePendingNotificationRequests(withIdentifiers: previousIdentifiers)
+            center.removeDeliveredNotifications(withIdentifiers: previousIdentifiers)
+            debugStore.log("Notificaciones anteriores removidas: \(previousIdentifiers.count).")
+        }
+
         let identifiers = schedulers.flatMap { scheduler in
             scheduler.weekdays.flatMap { weekday in
                 [
@@ -33,9 +55,16 @@ final class RitualNotificationService {
         center.removePendingNotificationRequests(withIdentifiers: identifiers)
 
         for scheduler in schedulers where scheduler.selectedItemCount > 0 {
-            scheduleNotification(for: scheduler)
             scheduleEndNotification(for: scheduler)
         }
+
+        defaults.set(identifiers, forKey: Self.scheduledIdentifiersKey)
+    }
+
+    func clearAll() {
+        center.removeAllPendingNotificationRequests()
+        center.removeAllDeliveredNotifications()
+        defaults.removeObject(forKey: Self.scheduledIdentifiersKey)
     }
 
     func sendRitualStartedNotification(for scheduler: RitualScheduler) {
@@ -50,7 +79,14 @@ final class RitualNotificationService {
             trigger: nil
         )
 
-        center.add(request)
+        center.removeDeliveredNotifications(withIdentifiers: [request.identifier])
+        center.add(request) { [debugStore] error in
+            if let error {
+                debugStore.log("Error notificación inicio \(scheduler.title): \(error.localizedDescription)")
+            } else {
+                debugStore.log("Notificación inicio enviada para \(scheduler.title).")
+            }
+        }
     }
 
     func sendRitualStoppedNotification(for scheduler: RitualScheduler?, endSource: String) {
@@ -66,6 +102,63 @@ final class RitualNotificationService {
         )
 
         center.add(request)
+    }
+
+    func sendModeBreakStartedNotification(for mode: FocusMode, minutes: Int) {
+        let content = UNMutableNotificationContent()
+        content.title = "Recreo activado"
+        content.body = "\(mode.title) está en pausa por \(minutes) minutos. Las apps vuelven a bloquearse al terminar."
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: modeBreakStartedNotificationIdentifier(for: mode),
+            content: content,
+            trigger: nil
+        )
+
+        center.add(request) { [debugStore] error in
+            if let error {
+                debugStore.log("Error notificación inicio recreo \(mode.title): \(error.localizedDescription)")
+            } else {
+                debugStore.log("Notificación inicio recreo enviada para \(mode.title).")
+            }
+        }
+    }
+
+    func scheduleModeBreakEndedNotification(for mode: FocusMode, at date: Date) {
+        center.removePendingNotificationRequests(
+            withIdentifiers: [modeBreakEndedNotificationIdentifier(for: mode)]
+        )
+
+        let secondsUntilEnd = max(1, date.timeIntervalSinceNow)
+        let content = UNMutableNotificationContent()
+        content.title = "Recreo terminado"
+        content.body = "\(mode.title) volvió a aplicar tus restricciones."
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: modeBreakEndedNotificationIdentifier(for: mode),
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: secondsUntilEnd, repeats: false)
+        )
+
+        center.add(request) { [debugStore] error in
+            if let error {
+                debugStore.log("Error notificación fin recreo \(mode.title): \(error.localizedDescription)")
+            } else {
+                debugStore.log("Notificación fin recreo \(mode.title): \(Self.formatDate(date)).")
+            }
+        }
+    }
+
+    func cancelModeBreakNotifications(for mode: FocusMode) {
+        let identifiers = [
+            modeBreakStartedNotificationIdentifier(for: mode),
+            modeBreakEndedNotificationIdentifier(for: mode)
+        ]
+        center.removePendingNotificationRequests(withIdentifiers: identifiers)
+        center.removeDeliveredNotifications(withIdentifiers: identifiers)
+        debugStore.log("Notificaciones de recreo removidas para \(mode.title).")
     }
 
     private func scheduleNextEndNotification(for scheduler: RitualScheduler) {
@@ -220,6 +313,14 @@ final class RitualNotificationService {
 
     private func nextEndNotificationIdentifier(for scheduler: RitualScheduler) -> String {
         "rituo.ritual.notification.next.end.\(scheduler.id.uuidString)"
+    }
+
+    private func modeBreakStartedNotificationIdentifier(for mode: FocusMode) -> String {
+        "rituo.mode.break.started.\(mode.id)"
+    }
+
+    private func modeBreakEndedNotificationIdentifier(for mode: FocusMode) -> String {
+        "rituo.mode.break.ended.\(mode.id)"
     }
 
     private func startNotificationBody(for scheduler: RitualScheduler) -> String {

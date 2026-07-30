@@ -19,8 +19,10 @@ final class KeychainTokenStore {
     private let accessTokenAccount = "accessToken"
     private let refreshTokenAccount = "refreshToken"
     private let authProviderAccount = "authProvider"
+    private let authUserAccount = "authUser"
     private let profileDisplayNameAccount = "profileDisplayName"
     private let profileImageURLAccount = "profileImageURL"
+    private let syncSecretPrefix = "syncOperation."
 
     private init() {}
 
@@ -32,11 +34,13 @@ final class KeychainTokenStore {
     func saveSession(
         accessToken: String,
         refreshToken: String,
+        user: AuthUser,
         provider: AuthProvider,
         profileDisplayName: String?,
         profileImageURL: URL?
     ) throws {
         try save(accessToken: accessToken, refreshToken: refreshToken)
+        try saveAuthUser(user)
         try save(value: provider.rawValue, account: authProviderAccount)
         try saveOptional(value: profileDisplayName, account: profileDisplayNameAccount)
         try saveOptional(value: profileImageURL?.absoluteString, account: profileImageURLAccount)
@@ -54,6 +58,15 @@ final class KeychainTokenStore {
         load(account: authProviderAccount).flatMap(AuthProvider.init(rawValue:))
     }
 
+    func loadAuthUser() -> AuthUser? {
+        guard let stored = load(account: authUserAccount),
+              let data = stored.data(using: .utf8) else {
+            return nil
+        }
+
+        return try? JSONDecoder().decode(AuthUser.self, from: data)
+    }
+
     func loadProfileDisplayName() -> String? {
         load(account: profileDisplayNameAccount)
     }
@@ -66,8 +79,48 @@ final class KeychainTokenStore {
         delete(account: accessTokenAccount)
         delete(account: refreshTokenAccount)
         delete(account: authProviderAccount)
+        delete(account: authUserAccount)
         delete(account: profileDisplayNameAccount)
         delete(account: profileImageURLAccount)
+    }
+
+    func saveSyncSecret(_ value: String, operationID: UUID) throws {
+        try save(value: value, account: syncSecretAccount(operationID))
+    }
+
+    func loadSyncSecret(operationID: UUID) -> String? {
+        load(account: syncSecretAccount(operationID))
+    }
+
+    func deleteSyncSecret(operationID: UUID) {
+        delete(account: syncSecretAccount(operationID))
+    }
+
+    func clearSyncSecrets() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecReturnAttributes as String: true,
+            kSecMatchLimit as String: kSecMatchLimitAll
+        ]
+
+        var result: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let items = result as? [[String: Any]] else {
+            return
+        }
+
+        for item in items {
+            guard let account = item[kSecAttrAccount as String] as? String,
+                  account.hasPrefix(syncSecretPrefix) else {
+                continue
+            }
+            delete(account: account)
+        }
+    }
+
+    private func syncSecretAccount(_ operationID: UUID) -> String {
+        "\(syncSecretPrefix)\(operationID.uuidString)"
     }
 
     private func saveOptional(value: String?, account: String) throws {
@@ -77,6 +130,12 @@ final class KeychainTokenStore {
         }
 
         try save(value: value, account: account)
+    }
+
+    private func saveAuthUser(_ user: AuthUser) throws {
+        let data = try JSONEncoder().encode(user)
+        guard let encoded = String(data: data, encoding: .utf8) else { return }
+        try save(value: encoded, account: authUserAccount)
     }
 
     private func save(value: String, account: String) throws {

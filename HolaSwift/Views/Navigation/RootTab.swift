@@ -8,27 +8,27 @@ enum RootTab: Hashable, CaseIterable {
 
     var title: String {
         switch self {
-        case .home:    return "Home"
+        case .home:    return "Inicio"
         case .rituals: return "Rituales"
-        case .focus:   return "Focus"
+        case .focus:   return "Foco"
         case .profile: return "Perfil"
         }
     }
 
     var symbolName: String {
         switch self {
-        case .home:    return "square.grid.2x2"
-        case .rituals: return "bolt"
-        case .focus:   return "circle.dotted"
+        case .home:    return "circle"
+        case .rituals: return "calendar"
+        case .focus:   return "chart.bar.xaxis"
         case .profile: return "person"
         }
     }
 
     var selectedSymbolName: String {
         switch self {
-        case .home:    return "square.grid.2x2.fill"
-        case .rituals: return "bolt.fill"
-        case .focus:   return "record.circle"
+        case .home:    return "circle.fill"
+        case .rituals: return "calendar.badge.clock"
+        case .focus:   return "chart.bar.xaxis.ascending"
         case .profile: return "person.fill"
         }
     }

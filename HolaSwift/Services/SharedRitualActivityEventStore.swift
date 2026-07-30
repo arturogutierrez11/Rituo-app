@@ -2,6 +2,7 @@ import Foundation
 
 struct SharedRitualActivityEvent: Codable, Identifiable {
     let id: UUID
+    let userID: String?
     let activityName: String
     let eventType: String
     let occurredAt: Date

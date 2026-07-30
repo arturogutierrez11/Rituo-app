@@ -1,0 +1,37 @@
+# macOS
+.DS_Store
+
+# Xcode user-specific state
+*.xcuserstate
+xcuserdata/
+**/xcuserdata/
+
+# Xcode build output
+DerivedData/
+build/
+*.ipa
+*.dSYM
+*.dSYM.zip
+*.xcarchive
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved.tmp
+
+# Local tooling and temporary output
+tmp/
+.claude/
+
+# Unrelated local source copied into this iOS workspace
+/src/
+
+# Local environment overrides and credentials
+.env
+.env.*
+!.env.example
+Config/Local.xcconfig
+*.p8
+*.p12
+*.pem
+*.mobileprovision

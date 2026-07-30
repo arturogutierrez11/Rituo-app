@@ -25,6 +25,25 @@ enum RituoPalette {
     static let danger = Color(red: 0.78, green: 0.12, blue: 0.13)
 }
 
+extension FocusMode {
+    var accentColor: Color {
+        switch id {
+        case "gym":
+            return Color(red: 0.28, green: 0.82, blue: 0.44)
+        case "meeting":
+            return Color(red: 0.35, green: 0.64, blue: 0.96)
+        case "reading":
+            return Color(red: 0.92, green: 0.67, blue: 0.25)
+        case "work":
+            return Color(red: 0.82, green: 0.48, blue: 0.92)
+        case "sleep":
+            return Color(red: 0.45, green: 0.56, blue: 0.92)
+        default:
+            return RituoPalette.mistBlue
+        }
+    }
+}
+
 struct RituoBackground: View {
     var body: some View {
         RituoPalette.background

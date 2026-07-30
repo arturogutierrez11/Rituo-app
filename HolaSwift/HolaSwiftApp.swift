@@ -1,5 +1,6 @@
 import GoogleSignIn
 import SwiftUI
+import SwiftData
 import UserNotifications
 
 final class RituoNotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
@@ -29,5 +30,6 @@ struct HolaSwiftApp: App {
                     GIDSignIn.sharedInstance.handle(url)
                 }
         }
+        .modelContainer(SyncOutboxStore.shared.container)
     }
 }

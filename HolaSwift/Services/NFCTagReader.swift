@@ -5,6 +5,7 @@ enum NFCTagReaderError: LocalizedError {
     case unsupported
     case invalidated
     case unknownTag
+    case unexpectedTag
 
     var errorDescription: String? {
         switch self {
@@ -14,6 +15,8 @@ enum NFCTagReaderError: LocalizedError {
             return "La lectura NFC fue cancelada o interrumpida."
         case .unknownTag:
             return "No se pudo identificar este tag NFC."
+        case .unexpectedTag:
+            return "Ese tag no está vinculado a esta cuenta."
         }
     }
 }
@@ -25,14 +28,25 @@ struct NFCTagScanResult: Equatable {
 final class NFCTagReader: NSObject, NFCTagReaderSessionDelegate {
     private var session: NFCTagReaderSession?
     private var onResult: ((Result<NFCTagScanResult, Error>) -> Void)?
+    private var expectedIdentifier: String?
+    private var unexpectedTagMessage: String?
 
-    func beginScanning(alertMessage: String, onResult: @escaping (Result<NFCTagScanResult, Error>) -> Void) {
+    func beginScanning(
+        alertMessage: String,
+        expectedIdentifier: String? = nil,
+        unexpectedTagMessage: String? = nil,
+        onResult: @escaping (Result<NFCTagScanResult, Error>) -> Void
+    ) {
         guard NFCTagReaderSession.readingAvailable else {
             onResult(.failure(NFCTagReaderError.unsupported))
             return
         }
 
         self.onResult = onResult
+        self.expectedIdentifier = expectedIdentifier?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+        self.unexpectedTagMessage = unexpectedTagMessage
         session = NFCTagReaderSession(
             pollingOption: [.iso14443, .iso15693],
             delegate: self,
@@ -95,7 +109,17 @@ final class NFCTagReader: NSObject, NFCTagReaderSessionDelegate {
                 return
             }
 
-            let scanResult = NFCTagScanResult(identifier: identifier.map { String(format: "%02X", $0) }.joined())
+            let scannedIdentifier = identifier.map { String(format: "%02X", $0) }.joined()
+            if let expectedIdentifier = self.expectedIdentifier,
+               !expectedIdentifier.isEmpty,
+               scannedIdentifier != expectedIdentifier {
+                session.invalidate(errorMessage: self.unexpectedTagMessage ?? "Ese tag no está vinculado a esta cuenta.")
+                self.onResult?(.failure(NFCTagReaderError.unexpectedTag))
+                self.cleanup()
+                return
+            }
+
+            let scanResult = NFCTagScanResult(identifier: scannedIdentifier)
             session.alertMessage = "Tag detectado."
             self.onResult?(.success(scanResult))
             session.invalidate()
@@ -105,6 +129,8 @@ final class NFCTagReader: NSObject, NFCTagReaderSessionDelegate {
 
     private func cleanup() {
         onResult = nil
+        expectedIdentifier = nil
+        unexpectedTagMessage = nil
         session = nil
     }
 }

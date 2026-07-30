@@ -28,26 +28,30 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
 
     private func makeConfiguration() -> ShieldConfiguration {
         ShieldConfiguration(
-            backgroundBlurStyle: nil,
-            backgroundColor: UIColor(red: 0.13, green: 0.15, blue: 0.29, alpha: 1),
+            backgroundBlurStyle: .regular,
+            backgroundColor: UIColor(
+                // Compensates the gray tint added by the system material and
+                // preserves a visibly stronger navy-blue finish.
+                red: 15.0 / 255.0,
+                green: 23.0 / 255.0,
+                blue: 65.0 / 255.0,
+                alpha: 1
+            ),
             icon: shieldArtwork,
             title: ShieldConfiguration.Label(
-                text: "Estás en modo foco",
+                text: "Estás en un ritual",
                 color: UIColor(red: 0.95, green: 0.96, blue: 1.0, alpha: 1)
             ),
             subtitle: ShieldConfiguration.Label(
-                text: "Este momento importa más que el scroll.\nVolvé cuando terminés.",
+                text: "Si querés desactivarlo, andá a la app de rituo y apoyá tu tarjeta.",
                 color: UIColor(red: 0.61, green: 0.70, blue: 0.78, alpha: 1)
             ),
             primaryButtonLabel: ShieldConfiguration.Label(
-                text: "Seguir en foco",
+                text: "Salir",
                 color: UIColor(red: 0.07, green: 0.09, blue: 0.17, alpha: 1)
             ),
             primaryButtonBackgroundColor: UIColor(red: 0.83, green: 0.89, blue: 1.0, alpha: 1),
-            secondaryButtonLabel: ShieldConfiguration.Label(
-                text: "Salir del ritual",
-                color: UIColor(red: 0.61, green: 0.70, blue: 0.78, alpha: 0.90)
-            )
+            secondaryButtonLabel: nil
         )
     }
 

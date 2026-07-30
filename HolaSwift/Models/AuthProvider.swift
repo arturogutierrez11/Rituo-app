@@ -3,6 +3,7 @@ import Foundation
 enum AuthProvider: String {
     case apple
     case google
+    case email
 
     var displayName: String {
         switch self {
@@ -10,6 +11,8 @@ enum AuthProvider: String {
             return "Apple"
         case .google:
             return "Google"
+        case .email:
+            return "Email"
         }
     }
 
@@ -19,6 +22,8 @@ enum AuthProvider: String {
             return "apple.logo"
         case .google:
             return "g.circle.fill"
+        case .email:
+            return "envelope.fill"
         }
     }
 }

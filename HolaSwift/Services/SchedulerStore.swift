@@ -2,13 +2,17 @@ import Foundation
 
 final class SchedulerStore {
     private let defaults: UserDefaults
-    private let key = "rituo.schedulers"
+    private let legacyKey = "rituo.schedulers"
+    private let accountKeyPrefix = "rituo.schedulers.account"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
     }
 
-    func load() -> [RitualScheduler] {
+    func load(accountID: String) -> [RitualScheduler] {
+        let key = accountKey(for: accountID)
+        migrateLegacySchedulersIfNeeded(to: key)
+
         guard let data = defaults.data(forKey: key) else {
             return []
         }
@@ -18,7 +22,7 @@ final class SchedulerStore {
             let userSchedulers = schedulers.filter { !$0.isLegacyDemoScheduler }
 
             if userSchedulers.count != schedulers.count {
-                save(userSchedulers)
+                save(userSchedulers, accountID: accountID)
             }
 
             return userSchedulers
@@ -27,11 +31,29 @@ final class SchedulerStore {
         }
     }
 
-    func save(_ schedulers: [RitualScheduler]) {
+    func save(_ schedulers: [RitualScheduler], accountID: String) {
         guard let data = try? JSONEncoder().encode(schedulers) else {
             return
         }
 
-        defaults.set(data, forKey: key)
+        defaults.set(data, forKey: accountKey(for: accountID))
+    }
+
+    func clear(accountID: String) {
+        defaults.removeObject(forKey: accountKey(for: accountID))
+    }
+
+    private func accountKey(for accountID: String) -> String {
+        "\(accountKeyPrefix).\(accountID)"
+    }
+
+    private func migrateLegacySchedulersIfNeeded(to accountKey: String) {
+        guard defaults.object(forKey: accountKey) == nil,
+              let legacyData = defaults.data(forKey: legacyKey) else {
+            return
+        }
+
+        defaults.set(legacyData, forKey: accountKey)
+        defaults.removeObject(forKey: legacyKey)
     }
 }

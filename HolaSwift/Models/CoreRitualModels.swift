@@ -21,7 +21,7 @@ struct RitualResponse: Decodable, Identifiable {
     let updatedAt: String
 }
 
-struct CreateRitualRequest: Encodable {
+struct CreateRitualRequest: Codable {
     let title: String
     let description: String?
     let icon: String
@@ -54,7 +54,7 @@ struct RitualBlockedItemResponse: Decodable, Identifiable {
     let createdAt: String
 }
 
-struct ReplaceRitualBlockedItemsRequest: Encodable {
+struct ReplaceRitualBlockedItemsRequest: Codable {
     let platform: String
     let items: [RitualBlockedItemRequest]
 
@@ -64,7 +64,7 @@ struct ReplaceRitualBlockedItemsRequest: Encodable {
     }
 }
 
-struct RitualBlockedItemRequest: Encodable {
+struct RitualBlockedItemRequest: Codable {
     let platform: String
     let type: String
     let identifier: String
@@ -86,6 +86,61 @@ struct RitualBlockedItemRequest: Encodable {
         self.displayName = displayName
         self.applicationIdentifier = applicationIdentifier ?? bundleIdentifier
         self.bundleIdentifier = bundleIdentifier
+    }
+}
+
+struct ModeResponse: Decodable, Identifiable {
+    let id: String
+    let userId: String
+    let templateKey: String
+    let title: String
+    let icon: String
+    let appCount: Int
+    let categoryCount: Int
+    let domainCount: Int
+    let selectionDigest: String?
+    let isProtected: Bool
+    let nfcUnlockEnabled: Bool
+    let status: String
+    let createdAt: String
+    let updatedAt: String
+}
+
+struct UpdateModeRequest: Codable {
+    let title: String
+    let icon: String
+    let appCount: Int
+    let categoryCount: Int
+    let domainCount: Int
+    let selectionDigest: String?
+    let isProtected: Bool
+    let nfcUnlockEnabled: Bool
+    let password: String?
+}
+
+struct RenameModeRequest: Codable {
+    let title: String
+}
+
+struct ModeBlockedItemResponse: Decodable, Identifiable {
+    let id: String
+    let modeId: String
+    let platform: String?
+    let type: String
+    let identifier: String
+    let displayName: String?
+    let applicationIdentifier: String?
+    let bundleIdentifier: String?
+    let createdAt: String
+}
+
+struct ReplaceModeBlockedItemsRequest: Codable {
+    let platform: String
+    let items: [RitualBlockedItemRequest]
+
+    init(platform: String = "ios", items: [RitualBlockedItemRequest]) {
+        self.platform = platform
+        self.items = items
     }
 }
 
@@ -114,6 +169,7 @@ struct StartRitualSessionRequest: Encodable {
 struct FinishRitualSessionRequest: Encodable {
     let status: String?
     let endSource: String
+    let tagIdentifier: String?
 }
 
 
@@ -128,7 +184,7 @@ struct RitualSessionSummaryResponse: Decodable {
     let lastSessionAt: String?
 }
 
-struct RecordRitualSessionRequest: Encodable {
+struct RecordRitualSessionRequest: Codable {
     let ritualId: String
     let startedAt: String
     let plannedEndAt: String?
@@ -136,6 +192,95 @@ struct RecordRitualSessionRequest: Encodable {
     let status: String
     let startSource: String
     let endSource: String
+}
+
+struct ModeSessionResponse: Decodable, Identifiable {
+    let id: String
+    let userId: String
+    let modeId: String
+    let startedAt: String
+    let endedAt: String?
+    let status: String
+    let startSource: String
+    let endSource: String?
+    let durationSeconds: Int?
+    let createdAt: String
+    let updatedAt: String
+}
+
+struct ActiveFocusSessionResponse: Decodable {
+    let type: String
+    let ritualSession: RitualSessionResponse?
+    let modeSession: ModeSessionResponse?
+}
+
+enum EmergencyUnlockReason: String, Codable {
+    case forgotTag = "forgot_tag"
+    case lostTag = "lost_tag"
+}
+
+struct EmergencyUnlockStatusResponse: Decodable {
+    let available: Bool
+    let cooldownDays: Int
+    let lastUsedAt: String?
+    let nextAvailableAt: String?
+}
+
+struct UseEmergencyUnlockRequest: Encodable {
+    let reason: EmergencyUnlockReason
+}
+
+struct EmergencyUnlockResponse: Decodable {
+    let id: String
+    let sessionType: String
+    let sessionId: String
+    let reason: EmergencyUnlockReason
+    let tagMarkedLost: Bool
+    let usedAt: String
+    let nextAvailableAt: String
+}
+
+struct StartModeSessionRequest: Encodable {
+    let modeId: String
+    let startSource: String
+}
+
+struct FinishModeSessionRequest: Encodable {
+    let status: String?
+    let endSource: String
+    let tagIdentifier: String?
+}
+
+struct ModeSessionSummaryResponse: Decodable {
+    let totalSessions: Int
+    let completedSessions: Int
+    let cancelledSessions: Int
+    let activeSessions: Int
+    let totalFocusSeconds: Int
+    let totalFocusMinutes: Int
+    let currentStreakDays: Int
+    let lastSessionAt: String?
+}
+
+struct FocusMetricDayResponse: Decodable {
+    let date: String
+    let totalFocusSeconds: Int
+    let totalFocusMinutes: Int
+}
+
+struct FocusMetricsSummaryResponse: Decodable {
+    let totalSessions: Int
+    let completedSessions: Int
+    let cancelledSessions: Int
+    let activeSessions: Int
+    let ritualSessions: Int
+    let modeSessions: Int
+    let totalFocusSeconds: Int
+    let totalFocusMinutes: Int
+    let focusDays: Int
+    let currentStreakDays: Int
+    let lastSessionAt: String?
+    let weeklyFocus: [FocusMetricDayResponse]
 }
 
 
@@ -167,4 +312,10 @@ struct VerifyNfcTagRequest: Encodable {
 struct VerifyNfcTagResponse: Decodable {
     let valid: Bool
     let claim: NfcTagClaimResponse?
+}
+
+struct ReviewDemoTagResponse: Decodable {
+    let enabled: Bool
+    let tagIdentifier: String
+    let claim: NfcTagClaimResponse
 }

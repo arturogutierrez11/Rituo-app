@@ -1,0 +1,7 @@
+#include "Base.xcconfig"
+
+APP_ENVIRONMENT = debug
+
+// Developers may create an ignored Config/Local.xcconfig and include it here
+// temporarily when they need to point a local build at another public endpoint.
+#include? "Local.xcconfig"

@@ -18,8 +18,8 @@ final class DeviceActivityScheduler {
         self.defaults = defaults
     }
 
-    func reschedule(_ schedulers: [RitualScheduler]) throws {
-        let fingerprint = try scheduleFingerprint(for: schedulers)
+    func reschedule(_ schedulers: [RitualScheduler], userID: String?) throws {
+        let fingerprint = try scheduleFingerprint(for: schedulers, userID: userID)
         let storedFingerprint = defaults.string(forKey: Self.scheduleFingerprintKey)
         let storedNames = defaults.stringArray(forKey: Self.scheduledNamesKey) ?? []
 
@@ -40,7 +40,7 @@ final class DeviceActivityScheduler {
                 continue
             }
 
-            let names = try schedule(scheduler)
+            let names = try schedule(scheduler, userID: userID)
             scheduledNames.append(contentsOf: names.map(\.rawValue))
         }
 
@@ -49,7 +49,7 @@ final class DeviceActivityScheduler {
     }
 
     @discardableResult
-    func schedule(_ scheduler: RitualScheduler) throws -> [DeviceActivityName] {
+    func schedule(_ scheduler: RitualScheduler, userID: String?) throws -> [DeviceActivityName] {
         var scheduledNames: [DeviceActivityName] = []
 
         for weekday in scheduler.weekdays {
@@ -58,10 +58,16 @@ final class DeviceActivityScheduler {
             try metadataStore.save(
                 metadata: SharedRitualActivityMetadata(
                     activityName: name.rawValue,
+                    userID: userID,
                     schedulerId: scheduler.id.uuidString,
                     coreRitualId: scheduler.coreRitualId,
                     title: scheduler.title,
-                    plannedEndAt: scheduler.endDate()
+                    plannedEndAt: scheduler.endDate(),
+                    endHour: scheduler.endHour,
+                    endMinute: scheduler.endMinute,
+                    strictModeEnabled: scheduler.strictModeEnabled,
+                    blockAppInstallation: scheduler.blockAppInstallation,
+                    blockAdultContent: scheduler.blockAdultContent
                 ),
                 for: name.rawValue
             )
@@ -115,6 +121,11 @@ final class DeviceActivityScheduler {
         debugStore.log("Monitores pausados manualmente \(stoppedNames.count) para \(scheduler.title).")
     }
 
+    func clearAll() {
+        stopPreviouslyScheduledActivities()
+        defaults.removeObject(forKey: Self.scheduleFingerprintKey)
+    }
+
     private func stopMonitoring(_ names: [DeviceActivityName]) {
         guard !names.isEmpty else { return }
         center.stopMonitoring(names)
@@ -134,8 +145,8 @@ final class DeviceActivityScheduler {
         defaults.removeObject(forKey: Self.scheduledNamesKey)
     }
 
-    private func scheduleFingerprint(for schedulers: [RitualScheduler]) throws -> String {
-        let components = try schedulers
+    private func scheduleFingerprint(for schedulers: [RitualScheduler], userID: String?) throws -> String {
+        let schedulerComponents = try schedulers
             .sorted { $0.id.uuidString < $1.id.uuidString }
             .map { scheduler -> String in
                 let selectionData = try JSONEncoder().encode(scheduler.selection)
@@ -150,10 +161,14 @@ final class DeviceActivityScheduler {
                     "\(scheduler.startHour):\(scheduler.startMinute)",
                     "\(scheduler.endHour):\(scheduler.endMinute)",
                     scheduler.weekdays.sorted().map(String.init).joined(separator: ","),
+                    scheduler.strictModeEnabled ? "strict" : "standard",
+                    scheduler.blockAppInstallation ? "block-install" : "allow-install",
+                    scheduler.blockAdultContent ? "sensitive-web" : "standard-web",
                     selectionHash
                 ].joined(separator: "|")
             }
 
+        let components = [userID ?? ""] + schedulerComponents
         let data = Data(components.joined(separator: "||").utf8)
         return SHA256.hash(data: data)
             .map { String(format: "%02x", $0) }

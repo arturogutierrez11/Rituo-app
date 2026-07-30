@@ -252,6 +252,136 @@ struct MessageStrip: View {
     }
 }
 
+struct RituoBottomSheetAction: Identifiable {
+    enum Style {
+        case primary
+        case secondary
+        case destructive
+    }
+
+    let id = UUID()
+    let title: String
+    let symbol: String?
+    let style: Style
+    let action: () -> Void
+
+    init(
+        title: String,
+        symbol: String? = nil,
+        style: Style = .primary,
+        action: @escaping () -> Void
+    ) {
+        self.title = title
+        self.symbol = symbol
+        self.style = style
+        self.action = action
+    }
+}
+
+struct RituoBottomActionSheet: View {
+    let symbol: String
+    let tint: Color
+    let title: String
+    let message: String
+    let actions: [RituoBottomSheetAction]
+
+    var body: some View {
+        ZStack {
+            Color(red: 0.08, green: 0.10, blue: 0.18).ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(RituoPalette.white.opacity(0.16))
+                    .frame(width: 36, height: 4)
+                    .padding(.top, 14)
+                    .padding(.bottom, 26)
+
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(tint.opacity(0.12))
+                        .frame(width: 64, height: 64)
+
+                    Image(systemName: symbol)
+                        .font(.system(size: 26, weight: .semibold))
+                        .foregroundStyle(tint)
+                }
+                .padding(.bottom, 18)
+
+                Text(title)
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(RituoPalette.white)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 10)
+
+                Text(message)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(RituoPalette.white.opacity(0.44))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 28)
+                    .padding(.bottom, 26)
+
+                VStack(spacing: 10) {
+                    ForEach(actions) { action in
+                        Button(action: action.action) {
+                            HStack(spacing: 8) {
+                                if let symbol = action.symbol {
+                                    Image(systemName: symbol)
+                                        .font(.system(size: 14, weight: .semibold))
+                                }
+
+                                Text(action.title)
+                                    .font(.system(size: 16, weight: .semibold))
+                            }
+                            .foregroundStyle(foregroundColor(for: action.style))
+                            .frame(maxWidth: .infinity, minHeight: action.style == .secondary ? 46 : 56)
+                            .background(background(for: action.style))
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(LoginPressButtonStyle())
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 16)
+            }
+        }
+        .presentationDetents([.height(sheetHeight)])
+        .presentationDragIndicator(.hidden)
+        .presentationCornerRadius(28)
+    }
+
+    private var sheetHeight: CGFloat {
+        let estimatedTextLines = max(1, Int(ceil(Double(message.count) / 42.0)))
+        let estimatedTextHeight = CGFloat(estimatedTextLines * 20)
+        return min(680, CGFloat(230 + actions.count * 66) + estimatedTextHeight)
+    }
+
+    private func foregroundColor(for style: RituoBottomSheetAction.Style) -> Color {
+        switch style {
+        case .primary:
+            return RituoPalette.deepOceanBlue
+        case .secondary:
+            return RituoPalette.white.opacity(0.40)
+        case .destructive:
+            return RituoPalette.white
+        }
+    }
+
+    @ViewBuilder
+    private func background(for style: RituoBottomSheetAction.Style) -> some View {
+        switch style {
+        case .primary:
+            RituoPalette.white
+        case .secondary:
+            Color.clear
+        case .destructive:
+            RituoPalette.danger.opacity(0.85)
+        }
+    }
+}
+
 struct ActionTile: View {
     let title: String
     let subtitle: String

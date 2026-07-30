@@ -1,0 +1,4 @@
+// Public runtime configuration shared by every build.
+// Never place passwords, signing keys, database credentials, or server secrets here.
+AUTH_API_BASE_URL = https:/$()/auth.rituo.io
+CORE_API_BASE_URL = https:/$()/api.rituo.io
