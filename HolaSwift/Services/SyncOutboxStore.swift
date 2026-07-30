@@ -1,21 +1,30 @@
 import Foundation
+import OSLog
 import SwiftData
+
+enum SyncOutboxStoreError: LocalizedError {
+    case unavailable
+
+    var errorDescription: String? {
+        "No pudimos guardar la operación pendiente en este dispositivo."
+    }
+}
 
 @MainActor
 final class SyncOutboxStore {
     static let shared = SyncOutboxStore()
     private static let maximumAutomaticAttempts = 8
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "io.rituo.app",
+        category: "SyncOutbox"
+    )
 
-    let container: ModelContainer
-    private let context: ModelContext
+    private let container: ModelContainer?
+    private let context: ModelContext?
 
     private init() {
-        do {
-            container = try ModelContainer(for: PendingSyncOperation.self)
-            context = ModelContext(container)
-        } catch {
-            fatalError("No se pudo abrir SyncOutbox en SwiftData: \(error)")
-        }
+        container = Self.makeContainer()
+        context = container.map(ModelContext.init)
     }
 
     func upsert(
@@ -24,6 +33,8 @@ final class SyncOutboxStore {
         type: SyncOperationType,
         payload: Data
     ) throws {
+        let context = try requireContext()
+
         if let existing = operation(userID: userID, type: type) {
             context.delete(existing)
         }
@@ -46,6 +57,8 @@ final class SyncOutboxStore {
         type: SyncOperationType,
         payload: Data
     ) throws {
+        let context = try requireContext()
+
         guard operation(id: id) == nil else { return }
 
         context.insert(
@@ -66,6 +79,8 @@ final class SyncOutboxStore {
         type: SyncOperationType,
         payload: Data
     ) throws {
+        let context = try requireContext()
+
         if let existing = operation(id: id) {
             existing.userID = userID
             existing.typeRawValue = type.rawValue
@@ -122,6 +137,8 @@ final class SyncOutboxStore {
     }
 
     func makeDue(userID: String) {
+        guard let context else { return }
+
         let operations = allOperations().filter {
             $0.userID == userID
                 && $0.statusRawValue != SyncOperationStatus.failed.rawValue
@@ -136,6 +153,7 @@ final class SyncOutboxStore {
     }
 
     func markSyncing(userID: String, type: SyncOperationType) {
+        guard let context else { return }
         guard let operation = operation(userID: userID, type: type) else { return }
         operation.statusRawValue = SyncOperationStatus.syncing.rawValue
         try? context.save()
@@ -147,6 +165,7 @@ final class SyncOutboxStore {
     }
 
     func remove(userID: String, type: SyncOperationType) {
+        guard let context else { return }
         guard let operation = operation(userID: userID, type: type) else { return }
         context.delete(operation)
         try? context.save()
@@ -159,6 +178,7 @@ final class SyncOutboxStore {
     }
 
     func markSyncing(id: UUID) {
+        guard let context else { return }
         guard let operation = operation(id: id) else { return }
         operation.statusRawValue = SyncOperationStatus.syncing.rawValue
         try? context.save()
@@ -170,12 +190,15 @@ final class SyncOutboxStore {
     }
 
     func remove(id: UUID) {
+        guard let context else { return }
         guard let operation = operation(id: id) else { return }
         context.delete(operation)
         try? context.save()
     }
 
     func updatePayload(id: UUID, payload: Data) throws {
+        let context = try requireContext()
+
         guard let operation = operation(id: id) else { return }
         operation.payload = payload
         try context.save()
@@ -190,6 +213,8 @@ final class SyncOutboxStore {
     }
 
     func retryFailed(userID: String) {
+        guard let context else { return }
+
         let operations = allOperations().filter {
             $0.userID == userID
                 && $0.statusRawValue == SyncOperationStatus.failed.rawValue
@@ -206,6 +231,8 @@ final class SyncOutboxStore {
     }
 
     func removeAll(userID: String) -> [UUID] {
+        guard let context else { return [] }
+
         let operations = allOperations().filter { $0.userID == userID }
         let operationIDs = operations.map(\.id)
         operations.forEach(context.delete)
@@ -231,6 +258,8 @@ final class SyncOutboxStore {
         to operation: PendingSyncOperation,
         error: Error
     ) {
+        guard let context else { return }
+
         operation.attempts += 1
         operation.lastError = error.localizedDescription
 
@@ -248,6 +277,103 @@ final class SyncOutboxStore {
     }
 
     private func allOperations() -> [PendingSyncOperation] {
-        (try? context.fetch(FetchDescriptor<PendingSyncOperation>())) ?? []
+        guard let context else { return [] }
+        return (try? context.fetch(FetchDescriptor<PendingSyncOperation>())) ?? []
+    }
+
+    private func requireContext() throws -> ModelContext {
+        guard let context else {
+            throw SyncOutboxStoreError.unavailable
+        }
+        return context
+    }
+
+    private static func makeContainer() -> ModelContainer? {
+        let configuration = ModelConfiguration(for: PendingSyncOperation.self)
+
+        do {
+            return try ModelContainer(
+                for: PendingSyncOperation.self,
+                configurations: configuration
+            )
+        } catch {
+            logger.error(
+                "No se pudo abrir el outbox persistente. Se intentará recuperar: \(error.localizedDescription, privacy: .public)"
+            )
+        }
+
+        quarantineStore(at: configuration.url)
+
+        do {
+            let recoveredContainer = try ModelContainer(
+                for: PendingSyncOperation.self,
+                configurations: configuration
+            )
+            logger.notice("El outbox local fue reconstruido correctamente.")
+            return recoveredContainer
+        } catch {
+            logger.fault(
+                "No se pudo reconstruir el outbox persistente. Se usará memoria temporal: \(error.localizedDescription, privacy: .public)"
+            )
+        }
+
+        do {
+            let memoryConfiguration = ModelConfiguration(
+                for: PendingSyncOperation.self,
+                isStoredInMemoryOnly: true
+            )
+            return try ModelContainer(
+                for: PendingSyncOperation.self,
+                configurations: memoryConfiguration
+            )
+        } catch {
+            logger.fault(
+                "El outbox temporal tampoco está disponible. La app continuará sin cola local: \(error.localizedDescription, privacy: .public)"
+            )
+            return nil
+        }
+    }
+
+    private static func quarantineStore(at storeURL: URL) {
+        let fileManager = FileManager.default
+        let candidates = [
+            storeURL,
+            URL(fileURLWithPath: storeURL.path + "-shm"),
+            URL(fileURLWithPath: storeURL.path + "-wal")
+        ]
+        let existingFiles = candidates.filter {
+            fileManager.fileExists(atPath: $0.path)
+        }
+
+        guard !existingFiles.isEmpty else {
+            logger.notice("No se encontraron archivos del outbox para poner en cuarentena.")
+            return
+        }
+
+        let recoveryDirectory = storeURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("SyncOutboxRecovery", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+
+        do {
+            try fileManager.createDirectory(
+                at: recoveryDirectory,
+                withIntermediateDirectories: true
+            )
+
+            for sourceURL in existingFiles {
+                let destinationURL = recoveryDirectory
+                    .appendingPathComponent(sourceURL.lastPathComponent)
+                try fileManager.moveItem(at: sourceURL, to: destinationURL)
+            }
+
+            logger.notice(
+                "El outbox dañado fue movido a cuarentena: \(recoveryDirectory.lastPathComponent, privacy: .public)"
+            )
+        } catch {
+            logger.error(
+                "No se pudo poner en cuarentena el outbox dañado: \(error.localizedDescription, privacy: .public)"
+            )
+        }
     }
 }
