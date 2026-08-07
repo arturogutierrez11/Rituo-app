@@ -11,6 +11,7 @@ final class DeviceActivityScheduler {
     private let calendar = Calendar.current
     private let selectionStore = SharedRitualSelectionStore()
     private let metadataStore = SharedRitualActivityMetadataStore()
+    private let activityStateStore = SharedRitualActivityStateStore()
     private let debugStore = DeviceActivityDebugStore()
     private let defaults: UserDefaults
 
@@ -32,7 +33,8 @@ final class DeviceActivityScheduler {
         debugStore.log("Reprogramando \(schedulers.count) rituales locales.")
 
         var scheduledNames: [String] = []
-        for scheduler in schedulers where scheduler.selectedItemCount > 0 {
+        for (priority, scheduler) in schedulers.enumerated()
+            where scheduler.selectedItemCount > 0 {
             guard scheduler.durationMinutes >= Self.minimumMonitorDurationMinutes else {
                 debugStore.log(
                     "Saltando DeviceActivity para \(scheduler.title): duración \(scheduler.durationMinutes)m menor a \(Self.minimumMonitorDurationMinutes)m. Fallback local activo si la app está abierta."
@@ -40,7 +42,11 @@ final class DeviceActivityScheduler {
                 continue
             }
 
-            let names = try schedule(scheduler, userID: userID)
+            let names = try schedule(
+                scheduler,
+                userID: userID,
+                priority: priority
+            )
             scheduledNames.append(contentsOf: names.map(\.rawValue))
         }
 
@@ -49,7 +55,11 @@ final class DeviceActivityScheduler {
     }
 
     @discardableResult
-    func schedule(_ scheduler: RitualScheduler, userID: String?) throws -> [DeviceActivityName] {
+    func schedule(
+        _ scheduler: RitualScheduler,
+        userID: String?,
+        priority: Int = .max
+    ) throws -> [DeviceActivityName] {
         var scheduledNames: [DeviceActivityName] = []
 
         for weekday in scheduler.weekdays {
@@ -65,6 +75,7 @@ final class DeviceActivityScheduler {
                     plannedEndAt: scheduler.endDate(),
                     endHour: scheduler.endHour,
                     endMinute: scheduler.endMinute,
+                    priority: priority,
                     strictModeEnabled: scheduler.strictModeEnabled,
                     blockAppInstallation: scheduler.blockAppInstallation,
                     blockAdultContent: scheduler.blockAdultContent
@@ -112,6 +123,7 @@ final class DeviceActivityScheduler {
         stoppedNames.forEach {
             selectionStore.removeSelection(for: $0)
             metadataStore.removeMetadata(for: $0)
+            activityStateStore.remove(activityName: $0)
         }
 
         let storedNames = defaults.stringArray(forKey: Self.scheduledNamesKey) ?? []
@@ -139,6 +151,7 @@ final class DeviceActivityScheduler {
             selectionStore.removeSelection(for: $0)
             metadataStore.removeMetadata(for: $0)
         }
+        activityStateStore.clear()
         if !storedNames.isEmpty {
             debugStore.log("Detenidos \(storedNames.count) monitores anteriores.")
         }
@@ -147,14 +160,15 @@ final class DeviceActivityScheduler {
 
     private func scheduleFingerprint(for schedulers: [RitualScheduler], userID: String?) throws -> String {
         let schedulerComponents = try schedulers
-            .sorted { $0.id.uuidString < $1.id.uuidString }
-            .map { scheduler -> String in
+            .enumerated()
+            .map { priority, scheduler -> String in
                 let selectionData = try JSONEncoder().encode(scheduler.selection)
                 let selectionHash = SHA256.hash(data: selectionData)
                     .map { String(format: "%02x", $0) }
                     .joined()
 
                 return [
+                    String(priority),
                     scheduler.id.uuidString,
                     scheduler.coreRitualId ?? "",
                     scheduler.title,

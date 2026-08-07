@@ -7,6 +7,7 @@ final class RitualNotificationService {
     private let center = UNUserNotificationCenter.current()
     private let calendar = Calendar.current
     private let debugStore = DeviceActivityDebugStore()
+    private let deliveryStore = SharedRitualNotificationDeliveryStore()
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -68,6 +69,16 @@ final class RitualNotificationService {
     }
 
     func sendRitualStartedNotification(for scheduler: RitualScheduler) {
+        guard deliveryStore.claimStartNotification(
+            schedulerId: scheduler.id.uuidString,
+            validUntil: scheduler.endDate()
+        ) else {
+            debugStore.log(
+                "Notificación inicio omitida por duplicado para \(scheduler.title)."
+            )
+            return
+        }
+
         let content = UNMutableNotificationContent()
         content.title = "Ritual activo"
         content.body = startNotificationBody(for: scheduler)
@@ -79,7 +90,6 @@ final class RitualNotificationService {
             trigger: nil
         )
 
-        center.removeDeliveredNotifications(withIdentifiers: [request.identifier])
         center.add(request) { [debugStore] error in
             if let error {
                 debugStore.log("Error notificación inicio \(scheduler.title): \(error.localizedDescription)")

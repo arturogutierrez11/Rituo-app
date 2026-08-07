@@ -71,7 +71,16 @@ struct RitualDashboardPage: View {
                     inactiveRitualView
                 }
             }
+
+            if viewModel.isStartingMode {
+                ModeStartingOverlay(
+                    title: viewModel.startingModeTitle ?? "Modo"
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                .zIndex(10)
+            }
         }
+        .animation(.easeInOut(duration: 0.22), value: viewModel.isStartingMode)
         .sheet(isPresented: $isModePickerPresented) {
             ModeStartSheet(viewModel: viewModel, accessToken: accessToken, onStartMode: { mode in
                 isModePickerPresented = false
@@ -81,20 +90,14 @@ struct RitualDashboardPage: View {
             })
         }
         .sheet(item: $pendingStartMode) { mode in
-            ModeConfirmStartSheet(mode: mode) { configuredMode in
-                viewModel.updateModeStrictMode(
-                    configuredMode.strictModeEnabled,
-                    for: configuredMode
-                )
-                viewModel.updateModeAppInstallationBlocking(
-                    configuredMode.blockAppInstallation,
-                    for: configuredMode
-                )
-                viewModel.updateModeAdultContentBlocking(
-                    configuredMode.blockAdultContent,
-                    for: configuredMode
-                )
-                Task { _ = await viewModel.startMode(configuredMode) }
+            ModeConfirmStartSheet(mode: mode) { configuredMode, durationMinutes in
+                viewModel.updateModeActivationOptions(configuredMode)
+                Task {
+                    _ = await viewModel.startMode(
+                        configuredMode,
+                        durationMinutes: durationMinutes
+                    )
+                }
                 pendingStartMode = nil
             } onCancel: {
                 pendingStartMode = nil
@@ -178,7 +181,9 @@ struct RitualDashboardPage: View {
                     ActiveModeStatusCard(
                         mode: mode,
                         isBreakActive: viewModel.isModeBreakActive,
-                        breakRemainingText: viewModel.modeBreakRemainingText
+                        breakRemainingText: viewModel.modeBreakRemainingText,
+                        modeRemainingText: viewModel.remainingBlockTimeText,
+                        hasTimeLimit: viewModel.blockedUntil != nil
                     )
                 } else {
                     ActiveRitualTimerCard(
@@ -307,6 +312,231 @@ struct RitualDashboardPage: View {
     private func activeProgress(for scheduler: RitualScheduler?) -> Double {
         guard let scheduler, scheduler.durationMinutes > 0 else { return 0 }
         return min(1, max(0, Double(activeRemainingMinutes) / Double(scheduler.durationMinutes)))
+    }
+}
+
+private struct ModeStartingOverlay: View {
+    let title: String
+    @State private var rotates = false
+    @State private var counterRotates = false
+    @State private var breathes = false
+    @State private var progressTravels = false
+    @State private var cardShimmers = false
+
+    var body: some View {
+        ZStack {
+            Color(red: 0.025, green: 0.04, blue: 0.09)
+                .opacity(0.76)
+                .ignoresSafeArea()
+
+            VStack(spacing: 24) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    RituoPalette.lightBlue.opacity(breathes ? 0.25 : 0.12),
+                                    .clear
+                                ],
+                                center: .center,
+                                startRadius: 4,
+                                endRadius: 70
+                            )
+                        )
+                        .frame(width: 148, height: 148)
+                        .blur(radius: 10)
+                        .scaleEffect(breathes ? 1.08 : 0.92)
+
+                    Circle()
+                        .stroke(RituoPalette.white.opacity(0.08), lineWidth: 1)
+                        .frame(width: 104, height: 104)
+
+                    Circle()
+                        .trim(from: 0.56, to: 0.76)
+                        .stroke(
+                            RituoPalette.lightBlue.opacity(0.34),
+                            style: StrokeStyle(lineWidth: 1.2, lineCap: .round)
+                        )
+                        .frame(width: 104, height: 104)
+                        .rotationEffect(.degrees(counterRotates ? -360 : 0))
+
+                    Circle()
+                        .stroke(RituoPalette.white.opacity(0.10), lineWidth: 2)
+                        .frame(width: 84, height: 84)
+
+                    Circle()
+                        .trim(from: 0.03, to: 0.31)
+                        .stroke(
+                            AngularGradient(
+                                colors: [
+                                    .clear,
+                                    RituoPalette.white,
+                                    RituoPalette.lightBlue.opacity(0.78),
+                                    .clear
+                                ],
+                                center: .center
+                            ),
+                            style: StrokeStyle(lineWidth: 3, lineCap: .round)
+                        )
+                        .frame(width: 84, height: 84)
+                        .rotationEffect(.degrees(rotates ? 360 : 0))
+                        .shadow(color: RituoPalette.white.opacity(0.50), radius: 6)
+                        .shadow(color: RituoPalette.lightBlue.opacity(0.45), radius: 12)
+
+                    Circle()
+                        .fill(RituoPalette.white)
+                        .frame(width: 5, height: 5)
+                        .shadow(color: RituoPalette.white, radius: 5)
+                        .offset(y: -42)
+                        .rotationEffect(.degrees(rotates ? 360 : 0))
+
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    RituoPalette.white.opacity(0.11),
+                                    RituoPalette.lightBlue.opacity(0.045)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 64, height: 64)
+                        .overlay {
+                            Circle()
+                                .stroke(RituoPalette.white.opacity(0.10), lineWidth: 1)
+                        }
+
+                    RituoSymbolIcon(
+                        size: 27,
+                        color: RituoPalette.white,
+                        opacity: breathes ? 1 : 0.68
+                    )
+                }
+                .frame(height: 132)
+
+                VStack(spacing: 9) {
+                    Text("ACTIVANDO MODO")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(2.2)
+                        .foregroundStyle(RituoPalette.lightBlue.opacity(0.70))
+
+                    Text(title)
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(RituoPalette.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+
+                    Text("Preparando tus bloqueos…")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(RituoPalette.white.opacity(0.46))
+                }
+
+                GeometryReader { proxy in
+                    let indicatorWidth: CGFloat = 58
+
+                    ZStack(alignment: .leading) {
+                        Capsule(style: .continuous)
+                            .fill(RituoPalette.white.opacity(0.07))
+
+                        Capsule(style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        .clear,
+                                        RituoPalette.lightBlue.opacity(0.75),
+                                        RituoPalette.white,
+                                        .clear
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(width: indicatorWidth)
+                            .shadow(color: RituoPalette.lightBlue.opacity(0.55), radius: 5)
+                            .offset(
+                                x: progressTravels
+                                    ? proxy.size.width - indicatorWidth
+                                    : 0
+                            )
+                    }
+                    .clipShape(Capsule(style: .continuous))
+                }
+                .frame(height: 3)
+                .padding(.horizontal, 6)
+            }
+            .padding(.horizontal, 32)
+            .padding(.top, 26)
+            .padding(.bottom, 28)
+            .background(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.13, green: 0.17, blue: 0.29).opacity(0.88),
+                                        Color(red: 0.065, green: 0.085, blue: 0.16).opacity(0.94)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        RituoPalette.white.opacity(0.20),
+                                        RituoPalette.lightBlue.opacity(0.08),
+                                        RituoPalette.white.opacity(0.04)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
+                            )
+                    }
+                    .overlay {
+                        GeometryReader { proxy in
+                            LinearGradient(
+                                colors: [.clear, RituoPalette.white.opacity(0.075), .clear],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .frame(width: 80)
+                            .rotationEffect(.degrees(18))
+                            .offset(x: cardShimmers ? proxy.size.width + 50 : -130)
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                        .allowsHitTesting(false)
+                    }
+                    .shadow(color: .black.opacity(0.42), radius: 34, y: 18)
+                    .shadow(color: RituoPalette.lightBlue.opacity(0.08), radius: 24)
+            )
+            .padding(.horizontal, 46)
+        }
+        .environment(\.colorScheme, .dark)
+        .allowsHitTesting(true)
+        .onAppear {
+            withAnimation(.linear(duration: 1.05).repeatForever(autoreverses: false)) {
+                rotates = true
+            }
+            withAnimation(.linear(duration: 3.6).repeatForever(autoreverses: false)) {
+                counterRotates = true
+            }
+            withAnimation(.easeInOut(duration: 1.35).repeatForever(autoreverses: true)) {
+                breathes = true
+            }
+            withAnimation(.easeInOut(duration: 1.05).repeatForever(autoreverses: true)) {
+                progressTravels = true
+            }
+            withAnimation(.linear(duration: 2.4).repeatForever(autoreverses: false)) {
+                cardShimmers = true
+            }
+        }
     }
 }
 
@@ -1052,6 +1282,8 @@ private struct ActiveModeStatusCard: View {
     let mode: FocusMode
     let isBreakActive: Bool
     let breakRemainingText: String?
+    let modeRemainingText: String?
+    let hasTimeLimit: Bool
     @State private var breathes = false
     @State private var rotates = false
 
@@ -1104,9 +1336,11 @@ private struct ActiveModeStatusCard: View {
                     .rotationEffect(.degrees(rotates ? 360 : 0))
 
                 // Icono central
-                Image(systemName: mode.displaySymbolName)
-                    .font(.system(size: 36, weight: .medium))
-                    .foregroundStyle(mode.accentColor.opacity(breathes ? 1.0 : 0.65))
+                RituoSymbolIcon(
+                    size: 40,
+                    color: mode.accentColor,
+                    opacity: breathes ? 1.0 : 0.65
+                )
                     .scaleEffect(breathes ? 1.04 : 0.96)
             }
             .frame(width: ring * 2.2, height: ring * 2.2)
@@ -1133,9 +1367,11 @@ private struct ActiveModeStatusCard: View {
 
                 HStack(spacing: 16) {
                     Label(
-                        isBreakActive ? (breakRemainingText ?? "5:00") : "Sin límite",
-                        systemImage: isBreakActive ? "pause.circle.fill" : "infinity"
+                        timerText,
+                        systemImage: timerSymbol
                     )
+                    .monospacedDigit()
+                    .contentTransition(.numericText(countsDown: true))
                     Rectangle()
                         .fill(RituoPalette.white.opacity(0.12))
                         .frame(width: 1, height: 12)
@@ -1154,21 +1390,38 @@ private struct ActiveModeStatusCard: View {
             withAnimation(.linear(duration: 5.0).repeatForever(autoreverses: false)) { rotates = true }
         }
     }
+
+    private var timerText: String {
+        if isBreakActive {
+            return breakRemainingText ?? "5:00"
+        }
+        if hasTimeLimit {
+            return modeRemainingText ?? "00:00"
+        }
+        return "Sin límite"
+    }
+
+    private var timerSymbol: String {
+        if isBreakActive { return "pause.circle.fill" }
+        return hasTimeLimit ? "timer" : "infinity"
+    }
 }
 
 // MARK: - Confirm start sheet
 
 private struct ModeConfirmStartSheet: View {
     let mode: FocusMode
-    let onConfirm: (FocusMode) -> Void
+    let onConfirm: (FocusMode, Int?) -> Void
     let onCancel: () -> Void
     @State private var strictModeEnabled: Bool
     @State private var blockAppInstallation: Bool
     @State private var blockAdultContent: Bool
+    @State private var durationHalfHours = 0
+    @State private var isDurationPickerPresented = false
 
     init(
         mode: FocusMode,
-        onConfirm: @escaping (FocusMode) -> Void,
+        onConfirm: @escaping (FocusMode, Int?) -> Void,
         onCancel: @escaping () -> Void
     ) {
         self.mode = mode
@@ -1186,6 +1439,19 @@ private struct ModeConfirmStartSheet: View {
             + (blockAdultContent ? 1 : 0)
     }
 
+    private var selectedDurationMinutes: Int? {
+        durationHalfHours == 0 ? nil : durationHalfHours * 30
+    }
+
+    private var durationValueText: String {
+        guard let minutes = selectedDurationMinutes else { return "∞" }
+        let hours = minutes / 60
+        let remainder = minutes % 60
+        if hours == 0 { return "\(remainder) min" }
+        if remainder == 0 { return "\(hours) h" }
+        return "\(hours) h \(remainder)"
+    }
+
     var body: some View {
         ZStack {
             Color(red: 0.08, green: 0.10, blue: 0.18).ignoresSafeArea()
@@ -1199,9 +1465,7 @@ private struct ModeConfirmStartSheet: View {
 
                 // Header con icono inline
                 HStack(spacing: 14) {
-                    Image(systemName: mode.displaySymbolName)
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(mode.accentColor)
+                    RituoSymbolIcon(size: 21, color: mode.accentColor)
                         .frame(width: 44, height: 44)
                         .background(
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -1240,18 +1504,37 @@ private struct ModeConfirmStartSheet: View {
                         .fill(RituoPalette.white.opacity(0.07))
                         .frame(width: 1, height: 44)
 
-                    VStack(spacing: 4) {
-                        Image(systemName: "infinity")
-                            .font(.system(size: 14))
-                            .foregroundStyle(RituoPalette.white.opacity(0.35))
-                        Text("∞")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(RituoPalette.white)
-                        Text("sin límite")
-                            .font(.system(size: 11))
-                            .foregroundStyle(RituoPalette.white.opacity(0.30))
+                    Button {
+                        isDurationPickerPresented = true
+                    } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: selectedDurationMinutes == nil ? "infinity" : "timer")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(
+                                    selectedDurationMinutes == nil
+                                        ? RituoPalette.white.opacity(0.35)
+                                        : mode.accentColor
+                                )
+                            Text(durationValueText)
+                                .font(.system(size: 18, weight: .bold, design: .rounded))
+                                .foregroundStyle(RituoPalette.white)
+                                .contentTransition(.numericText())
+                            HStack(spacing: 3) {
+                                Text(selectedDurationMinutes == nil ? "sin límite" : "límite")
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.system(size: 7, weight: .bold))
+                            }
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(
+                                selectedDurationMinutes == nil
+                                    ? RituoPalette.white.opacity(0.30)
+                                    : mode.accentColor.opacity(0.78)
+                            )
+                        }
+                        .frame(maxWidth: .infinity)
+                        .contentShape(Rectangle())
                     }
-                    .frame(maxWidth: .infinity)
+                    .buttonStyle(.plain)
                 }
                 .padding(.vertical, 16)
                 .background(
@@ -1295,25 +1578,16 @@ private struct ModeConfirmStartSheet: View {
 
                 // Botones
                 VStack(spacing: 10) {
-                    Button {
+                    SlideToActivateModeButton(
+                        title: mode.title,
+                        accentColor: mode.accentColor
+                    ) {
                         var configuredMode = mode
                         configuredMode.strictModeEnabled = strictModeEnabled
                         configuredMode.blockAppInstallation = blockAppInstallation
                         configuredMode.blockAdultContent = blockAdultContent
-                        onConfirm(configuredMode)
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                            Text("Activar \(mode.title)")
-                                .font(.system(size: 16, weight: .semibold))
-                        }
-                        .foregroundStyle(RituoPalette.deepOceanBlue)
-                        .frame(maxWidth: .infinity, minHeight: 56)
-                        .background(RituoPalette.white)
-                        .clipShape(Capsule())
+                        onConfirm(configuredMode, selectedDurationMinutes)
                     }
-                    .buttonStyle(LoginPressButtonStyle())
 
                     Button(action: onCancel) {
                         Text("Cancelar")
@@ -1330,6 +1604,315 @@ private struct ModeConfirmStartSheet: View {
         .presentationDetents([.height(550)])
         .presentationDragIndicator(.hidden)
         .presentationCornerRadius(28)
+        .sheet(isPresented: $isDurationPickerPresented) {
+            ModeDurationPickerSheet(
+                accentColor: mode.accentColor,
+                selectedHalfHours: $durationHalfHours
+            )
+        }
+    }
+}
+
+private struct ModeDurationPickerSheet: View {
+    let accentColor: Color
+    @Binding var selectedHalfHours: Int
+    @Environment(\.dismiss) private var dismiss
+    @State private var draftHalfHours: Int
+
+    init(accentColor: Color, selectedHalfHours: Binding<Int>) {
+        self.accentColor = accentColor
+        _selectedHalfHours = selectedHalfHours
+        _draftHalfHours = State(initialValue: selectedHalfHours.wrappedValue)
+    }
+
+    var body: some View {
+        ZStack {
+            Color(red: 0.075, green: 0.095, blue: 0.17)
+                .ignoresSafeArea()
+
+            VStack(spacing: 12) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Apagado automático")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(RituoPalette.white)
+                        Text("Elegí cuánto tiempo permanecerá activo")
+                            .font(.system(size: 13))
+                            .foregroundStyle(RituoPalette.white.opacity(0.45))
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 20)
+
+                Picker("Duración", selection: $draftHalfHours) {
+                    Text("Sin límite").tag(0)
+                    ForEach(1...48, id: \.self) { halfHours in
+                        Text(durationLabel(for: halfHours * 30))
+                            .tag(halfHours)
+                    }
+                }
+                .pickerStyle(.wheel)
+                .tint(accentColor)
+                .colorScheme(.dark)
+                .frame(height: 150)
+
+                Button {
+                    selectedHalfHours = draftHalfHours
+                    dismiss()
+                } label: {
+                    Text("Aplicar límite")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Color(red: 0.06, green: 0.08, blue: 0.15))
+                        .frame(maxWidth: .infinity, minHeight: 50)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(accentColor)
+                        )
+                }
+                .buttonStyle(LoginPressButtonStyle())
+                .padding(.horizontal, 24)
+                .padding(.bottom, 14)
+            }
+        }
+        .presentationDetents([.height(340)])
+        .presentationDragIndicator(.visible)
+        .presentationCornerRadius(28)
+    }
+
+    private func durationLabel(for minutes: Int) -> String {
+        let hours = minutes / 60
+        let remainder = minutes % 60
+        if hours == 0 { return "\(remainder) minutos" }
+        if remainder == 0 { return hours == 1 ? "1 hora" : "\(hours) horas" }
+        return "\(hours) h \(remainder) min"
+    }
+}
+
+private struct SlideToActivateModeButton: View {
+    let title: String
+    let accentColor: Color
+    let action: () -> Void
+
+    @State private var dragOffset: CGFloat = 0
+    @State private var hasCompleted = false
+    @State private var shimmerMovesRight = false
+
+    private let controlHeight: CGFloat = 62
+    private let thumbSize: CGFloat = 50
+    private let inset: CGFloat = 6
+
+    var body: some View {
+        GeometryReader { proxy in
+            let travel = max(0, proxy.size.width - thumbSize - (inset * 2))
+            let progress = travel > 0 ? min(1, dragOffset / travel) : 0
+
+            ZStack(alignment: .leading) {
+                Capsule(style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.12, green: 0.16, blue: 0.27),
+                                Color(red: 0.075, green: 0.10, blue: 0.18)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(alignment: .leading) {
+                        Capsule(style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        accentColor.opacity(0.30),
+                                        accentColor.opacity(0.13),
+                                        .clear
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(width: thumbSize + (travel * progress) + inset)
+                    }
+
+                Capsule(style: .continuous)
+                    .fill(RituoPalette.white.opacity(0.055))
+                    .frame(height: 2)
+                    .padding(.horizontal, 34)
+                    .allowsHitTesting(false)
+
+                HStack {
+                    Spacer()
+                    Circle()
+                        .fill(RituoPalette.white.opacity(0.025))
+                        .overlay {
+                            Circle()
+                                .stroke(
+                                    accentColor.opacity(0.20 + (0.36 * progress)),
+                                    lineWidth: 1
+                                )
+                        }
+                        .frame(width: 42, height: 42)
+                        .padding(.trailing, 10)
+                }
+                .allowsHitTesting(false)
+
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                .clear,
+                                accentColor.opacity(0.20),
+                                RituoPalette.white.opacity(0.24),
+                                .clear
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: 62, height: controlHeight * 1.4)
+                    .rotationEffect(.degrees(12))
+                    .offset(x: shimmerMovesRight ? proxy.size.width + 18 : -80)
+                    .blendMode(.plusLighter)
+                    .allowsHitTesting(false)
+
+                Group {
+                    if hasCompleted {
+                        HStack(spacing: 7) {
+                            Text("ACTIVANDO")
+                                .font(.system(size: 10, weight: .bold))
+                                .tracking(1.4)
+                            Text(title)
+                                .font(.system(size: 15, weight: .bold))
+                        }
+                            .foregroundStyle(RituoPalette.white)
+                            .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                    } else {
+                        HStack(spacing: 10) {
+                            VStack(spacing: 1) {
+                                Text("DESLIZÁ PARA ACTIVAR")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .tracking(1.35)
+                                    .foregroundStyle(RituoPalette.white.opacity(0.42))
+                                Text(title)
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundStyle(RituoPalette.white)
+                                    .lineLimit(1)
+                            }
+                            Image(systemName: "chevron.right.2")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(accentColor.opacity(0.72))
+                        }
+                        .opacity(max(0, 1 - (Double(progress) * 1.45)))
+                        .offset(x: progress * 10)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, thumbSize + 18)
+                .allowsHitTesting(false)
+
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [accentColor, accentColor.opacity(0.78)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: thumbSize, height: thumbSize)
+                    .overlay {
+                        Image(systemName: hasCompleted ? "checkmark" : "chevron.right.2")
+                            .font(.system(size: hasCompleted ? 17 : 15, weight: .bold))
+                            .foregroundStyle(RituoPalette.white)
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                    .overlay {
+                        Circle()
+                            .stroke(RituoPalette.white.opacity(0.42), lineWidth: 1)
+                            .padding(2)
+                    }
+                    .overlay {
+                        Circle()
+                            .stroke(accentColor.opacity(0.32), lineWidth: 5)
+                            .blur(radius: 5)
+                            .padding(2)
+                    }
+                    .shadow(color: .black.opacity(0.30), radius: 5, y: 2)
+                    .offset(x: inset + dragOffset)
+                    .scaleEffect(hasCompleted ? 1.04 : 1)
+            }
+            .frame(height: controlHeight)
+            .clipShape(Capsule(style: .continuous))
+            .overlay {
+                Capsule(style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                RituoPalette.white.opacity(0.20),
+                                accentColor.opacity(0.26),
+                                RituoPalette.white.opacity(0.07)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            }
+            .shadow(color: .black.opacity(0.26), radius: 10, y: 5)
+            .contentShape(Capsule(style: .continuous))
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        guard !hasCompleted else { return }
+                        dragOffset = min(travel, max(0, value.translation.width))
+                    }
+                    .onEnded { value in
+                        guard !hasCompleted else { return }
+                        let projectedOffset = max(
+                            dragOffset,
+                            value.predictedEndTranslation.width
+                        )
+                        if projectedOffset >= travel * 0.78 {
+                            complete(travel: travel)
+                        } else {
+                            withAnimation(
+                                .spring(response: 0.38, dampingFraction: 0.72)
+                            ) {
+                                dragOffset = 0
+                            }
+                        }
+                    }
+            )
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Activar \(title)")
+            .accessibilityValue(hasCompleted ? "Activando" : "Sin activar")
+            .accessibilityHint("Deslizá hacia la derecha para activar el modo")
+            .accessibilityAction {
+                complete(travel: travel)
+            }
+        }
+        .frame(height: controlHeight)
+        .sensoryFeedback(.success, trigger: hasCompleted)
+        .onAppear {
+            withAnimation(
+                .linear(duration: 1.85).repeatForever(autoreverses: false)
+            ) {
+                shimmerMovesRight = true
+            }
+        }
+    }
+
+    private func complete(travel: CGFloat) {
+        guard !hasCompleted else { return }
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.76)) {
+            dragOffset = travel
+            hasCompleted = true
+        }
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(260))
+            action()
+        }
     }
 }
 
@@ -1363,7 +1946,8 @@ private struct ModeStartOptionToggle: View {
                 }
             }
         }
-        .toggleStyle(SwitchToggleStyle(tint: accentColor))
+        .toggleStyle(ModeStartSlideToggleStyle(accentColor: accentColor))
+        .sensoryFeedback(.selection, trigger: isOn)
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
         .background(
@@ -1374,6 +1958,79 @@ private struct ModeStartOptionToggle: View {
                         .stroke(RituoPalette.white.opacity(0.06), lineWidth: 1)
                 }
         )
+    }
+}
+
+private struct ModeStartSlideToggleStyle: ToggleStyle {
+    let accentColor: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+                configuration.isOn.toggle()
+            }
+        } label: {
+            HStack(spacing: 14) {
+                configuration.label
+
+                Spacer(minLength: 8)
+
+                ZStack {
+                    Capsule(style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: configuration.isOn
+                                    ? [accentColor.opacity(0.72), accentColor]
+                                    : [
+                                        RituoPalette.white.opacity(0.07),
+                                        RituoPalette.white.opacity(0.11)
+                                    ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .overlay {
+                            Capsule(style: .continuous)
+                                .stroke(
+                                    configuration.isOn
+                                        ? accentColor.opacity(0.72)
+                                        : RituoPalette.white.opacity(0.10),
+                                    lineWidth: 1
+                                )
+                        }
+                        .shadow(
+                            color: configuration.isOn
+                                ? accentColor.opacity(0.34)
+                                : .clear,
+                            radius: 9,
+                            y: 2
+                        )
+
+                    Circle()
+                        .fill(RituoPalette.white)
+                        .frame(width: 26, height: 26)
+                        .overlay {
+                            Image(systemName: configuration.isOn ? "checkmark" : "minus")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(
+                                    configuration.isOn
+                                        ? accentColor
+                                        : Color(red: 0.22, green: 0.26, blue: 0.35)
+                                )
+                        }
+                        .shadow(color: .black.opacity(0.28), radius: 4, y: 2)
+                        .offset(x: configuration.isOn ? 13 : -13)
+                }
+                .frame(width: 58, height: 32)
+                .animation(
+                    .spring(response: 0.32, dampingFraction: 0.72),
+                    value: configuration.isOn
+                )
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(configuration.isOn ? "Activado" : "Desactivado")
     }
 }
 
@@ -1398,9 +2055,7 @@ private struct ModeConfirmStopSheet: View {
                 // Header con icono inline
                 HStack(spacing: 14) {
                     if let mode {
-                        Image(systemName: mode.displaySymbolName)
-                            .font(.system(size: 18, weight: .medium))
-                            .foregroundStyle(mode.accentColor)
+                        RituoSymbolIcon(size: 21, color: mode.accentColor)
                             .frame(width: 44, height: 44)
                             .background(
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -1582,9 +2237,11 @@ private struct ModeStartRow: View {
     var body: some View {
         HStack(spacing: 16) {
             // Icon
-            Image(systemName: mode.displaySymbolName)
-                .font(.system(size: 20, weight: .medium))
-                .foregroundStyle(mode.accentColor.opacity(0.85))
+            RituoSymbolIcon(
+                size: 21,
+                color: mode.accentColor,
+                opacity: 0.85
+            )
                 .frame(width: 28, height: 28)
 
             Rectangle()
@@ -1685,9 +2342,7 @@ private struct ModeRenameSheet: View {
                     .padding(.bottom, 26)
 
                 HStack(spacing: 14) {
-                    Image(systemName: mode.displaySymbolName)
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(mode.accentColor)
+                    RituoSymbolIcon(size: 21, color: mode.accentColor)
                         .frame(width: 44, height: 44)
                         .background(
                             RoundedRectangle(cornerRadius: 13, style: .continuous)
