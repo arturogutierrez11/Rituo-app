@@ -302,11 +302,65 @@ final class BlockSetupViewModel: ObservableObject {
         modeOutboxRetryTask?.cancel()
         scheduledRitualOutboxRetryTask?.cancel()
         configurationOutboxRetryTask?.cancel()
+        unblockTask?.cancel()
+        unblockTask = nil
+        countdownTimer?.invalidate()
+        countdownTimer = nil
+        modeBreakTask?.cancel()
+        modeBreakTask = nil
+        delayedShieldClearTasks.forEach { $0.cancel() }
+        delayedShieldClearTasks.removeAll()
+        delayedModeShieldClearTasks.forEach { $0.cancel() }
+        delayedModeShieldClearTasks.removeAll()
+
+        // Signing out ends every local blocking context. Keep the account's
+        // saved rituals and modes, but stop their system monitors and remove
+        // every restriction before the authentication state disappears.
+        deviceActivityScheduler.clearAll()
+        modeBreakActivityScheduler.cancelCurrent()
+        modeEndActivityScheduler.cancelCurrent()
+        notificationService.clearAll()
+        blocker.clearAllShields()
+        blocker.clearAllStrictModeRestrictions()
+        blocker.clearAppInstallationBlocking()
+        blocker.clearSensitiveWebContentBlocking()
+        blocker.refreshSafariContentBlocking(isEnabled: false)
+        sharedSuppressionStore.setModeActive(false)
+        sharedSuppressionStore.replaceSuppressions([:])
+        activeModeSnapshotStore.clear()
+
+        defaults.removeObject(forKey: scheduledSuppressionsKey)
+        defaults.removeObject(forKey: pendingCoreSessionFinishKey)
+        defaults.removeObject(forKey: pendingCoreModeSessionFinishKey)
+        defaults.removeObject(forKey: modeBreakUntilKey)
+        defaults.removeObject(forKey: modeBreakUsedModeIDKey)
+
         activeAccessToken = nil
+        activeAccountID = nil
+        activeModeAccountID = nil
         activeCoreSession = nil
         activeCoreModeSession = nil
+        activeBlockSource = nil
         didResolveActiveRitualSession = false
         didResolveActiveModeSession = false
+        schedulers = []
+        modes = FocusMode.defaults
+        selection = FamilyActivitySelection()
+        selectedSchedulerID = nil
+        suppressedScheduledBlocks = [:]
+        pendingCoreSessionFinish = nil
+        pendingCoreModeSessionFinish = nil
+        pendingRitualPasswords = [:]
+        pendingModePasswords = [:]
+        isBlocking = false
+        isStrictModeEnabled = false
+        isAppInstallationBlockingEnabled = false
+        isSensitiveWebContentBlockingEnabled = false
+        blockedUntil = nil
+        remainingBlockTimeText = nil
+        modeBreakUntil = nil
+        modeBreakRemainingText = nil
+        hasUsedModeBreakInCurrentSession = false
         ritualSessionSummary = nil
         modeSessionSummary = nil
         focusMetricsSummary = nil

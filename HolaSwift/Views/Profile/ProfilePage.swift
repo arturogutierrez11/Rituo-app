@@ -79,10 +79,10 @@ struct ProfilePage: View {
                                 actionDescription: "cerrar sesión",
                                 alertMessage: "Acerca la tarjeta rituo (apoya el chip, a la altura de la cámara frontal) para cerrar sesión."
                             ) {
-                                authViewModel.signOut()
+                                signOutAndReleaseRestrictions()
                             }
                         } else {
-                            authViewModel.signOut()
+                            signOutAndReleaseRestrictions()
                         }
                     },
                     RituoBottomSheetAction(title: "Cancelar", style: .secondary) {
@@ -108,6 +108,11 @@ struct ProfilePage: View {
             isSettingsPresented = true
             viewModel.consumeNfcTagSetupRequest()
         }
+    }
+
+    private func signOutAndReleaseRestrictions() {
+        viewModel.clearAuthenticatedState()
+        authViewModel.signOut()
     }
 
     // MARK: - Header
