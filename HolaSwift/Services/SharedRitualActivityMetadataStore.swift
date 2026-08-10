@@ -9,6 +9,7 @@ struct SharedRitualActivityMetadata: Codable {
     let plannedEndAt: Date?
     let endHour: Int?
     let endMinute: Int?
+    let priority: Int
     let strictModeEnabled: Bool
     let blockAppInstallation: Bool
     let blockAdultContent: Bool
@@ -22,6 +23,7 @@ struct SharedRitualActivityMetadata: Codable {
         case plannedEndAt
         case endHour
         case endMinute
+        case priority
         case strictModeEnabled
         case blockAppInstallation
         case blockAdultContent
@@ -36,6 +38,7 @@ struct SharedRitualActivityMetadata: Codable {
         plannedEndAt: Date?,
         endHour: Int?,
         endMinute: Int?,
+        priority: Int = .max,
         strictModeEnabled: Bool = false,
         blockAppInstallation: Bool = false,
         blockAdultContent: Bool = false
@@ -48,6 +51,7 @@ struct SharedRitualActivityMetadata: Codable {
         self.plannedEndAt = plannedEndAt
         self.endHour = endHour
         self.endMinute = endMinute
+        self.priority = priority
         self.strictModeEnabled = strictModeEnabled
         self.blockAppInstallation = blockAppInstallation
         self.blockAdultContent = blockAdultContent
@@ -65,6 +69,7 @@ struct SharedRitualActivityMetadata: Codable {
             plannedEndAt: try container.decodeIfPresent(Date.self, forKey: .plannedEndAt),
             endHour: try container.decodeIfPresent(Int.self, forKey: .endHour),
             endMinute: try container.decodeIfPresent(Int.self, forKey: .endMinute),
+            priority: try container.decodeIfPresent(Int.self, forKey: .priority) ?? .max,
             strictModeEnabled: try container.decodeIfPresent(Bool.self, forKey: .strictModeEnabled) ?? false,
             blockAppInstallation: try container.decodeIfPresent(Bool.self, forKey: .blockAppInstallation) ?? false,
             blockAdultContent: try container.decodeIfPresent(Bool.self, forKey: .blockAdultContent) ?? false

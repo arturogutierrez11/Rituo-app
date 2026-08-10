@@ -41,17 +41,28 @@ struct RituoFloatingTabBar: View {
 
 // MARK: - Rituo symbol icon (ø)
 
-private struct RituoSymbolIcon: View {
+struct RituoSymbolIcon: View {
     let size: CGFloat
+    let color: Color
     let opacity: Double
+
+    init(
+        size: CGFloat,
+        color: Color = RituoPalette.white,
+        opacity: Double = 1
+    ) {
+        self.size = size
+        self.color = color
+        self.opacity = opacity
+    }
 
     var body: some View {
         ZStack {
             Circle()
-                .strokeBorder(RituoPalette.white.opacity(opacity), lineWidth: size * 0.13)
+                .strokeBorder(color.opacity(opacity), lineWidth: size * 0.13)
                 .frame(width: size, height: size)
             Rectangle()
-                .fill(RituoPalette.white.opacity(opacity))
+                .fill(color.opacity(opacity))
                 .frame(width: size * 1.18, height: size * 0.13)
                 .clipShape(Capsule())
         }

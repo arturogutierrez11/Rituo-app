@@ -69,6 +69,8 @@ final class BlockSetupViewModel: ObservableObject {
     @Published var modes: [FocusMode]
     @Published var selectedSchedulerID: RitualScheduler.ID?
     @Published var isPickerPresented = false
+    @Published private(set) var isStartingMode = false
+    @Published private(set) var startingModeTitle: String?
     @Published var modeActivityPickerTarget: FocusMode?
     @Published var isAuthorizing = false
     @Published var isBlocking = false
@@ -118,9 +120,11 @@ final class BlockSetupViewModel: ObservableObject {
     private let blocker = AppBlocker()
     private let deviceActivityScheduler = DeviceActivityScheduler()
     private let modeBreakActivityScheduler = ModeBreakActivityScheduler()
+    private let modeEndActivityScheduler = ModeEndActivityScheduler()
     private let deviceActivityDebugStore = DeviceActivityDebugStore()
     private let activityEventStore = SharedRitualActivityEventStore()
     private let sharedSuppressionStore = SharedRitualSuppressionStore()
+    private let activeModeSnapshotStore = SharedActiveModeSnapshotStore()
     private let sharedStrictModeStore = SharedStrictModeStore()
     private let sharedAppInstallationBlockStore = SharedAppInstallationBlockStore()
     private let sharedSensitiveWebContentBlockStore = SharedSensitiveWebContentBlockStore()
@@ -298,11 +302,65 @@ final class BlockSetupViewModel: ObservableObject {
         modeOutboxRetryTask?.cancel()
         scheduledRitualOutboxRetryTask?.cancel()
         configurationOutboxRetryTask?.cancel()
+        unblockTask?.cancel()
+        unblockTask = nil
+        countdownTimer?.invalidate()
+        countdownTimer = nil
+        modeBreakTask?.cancel()
+        modeBreakTask = nil
+        delayedShieldClearTasks.forEach { $0.cancel() }
+        delayedShieldClearTasks.removeAll()
+        delayedModeShieldClearTasks.forEach { $0.cancel() }
+        delayedModeShieldClearTasks.removeAll()
+
+        // Signing out ends every local blocking context. Keep the account's
+        // saved rituals and modes, but stop their system monitors and remove
+        // every restriction before the authentication state disappears.
+        deviceActivityScheduler.clearAll()
+        modeBreakActivityScheduler.cancelCurrent()
+        modeEndActivityScheduler.cancelCurrent()
+        notificationService.clearAll()
+        blocker.clearAllShields()
+        blocker.clearAllStrictModeRestrictions()
+        blocker.clearAppInstallationBlocking()
+        blocker.clearSensitiveWebContentBlocking()
+        blocker.refreshSafariContentBlocking(isEnabled: false)
+        sharedSuppressionStore.setModeActive(false)
+        sharedSuppressionStore.replaceSuppressions([:])
+        activeModeSnapshotStore.clear()
+
+        defaults.removeObject(forKey: scheduledSuppressionsKey)
+        defaults.removeObject(forKey: pendingCoreSessionFinishKey)
+        defaults.removeObject(forKey: pendingCoreModeSessionFinishKey)
+        defaults.removeObject(forKey: modeBreakUntilKey)
+        defaults.removeObject(forKey: modeBreakUsedModeIDKey)
+
         activeAccessToken = nil
+        activeAccountID = nil
+        activeModeAccountID = nil
         activeCoreSession = nil
         activeCoreModeSession = nil
+        activeBlockSource = nil
         didResolveActiveRitualSession = false
         didResolveActiveModeSession = false
+        schedulers = []
+        modes = FocusMode.defaults
+        selection = FamilyActivitySelection()
+        selectedSchedulerID = nil
+        suppressedScheduledBlocks = [:]
+        pendingCoreSessionFinish = nil
+        pendingCoreModeSessionFinish = nil
+        pendingRitualPasswords = [:]
+        pendingModePasswords = [:]
+        isBlocking = false
+        isStrictModeEnabled = false
+        isAppInstallationBlockingEnabled = false
+        isSensitiveWebContentBlockingEnabled = false
+        blockedUntil = nil
+        remainingBlockTimeText = nil
+        modeBreakUntil = nil
+        modeBreakRemainingText = nil
+        hasUsedModeBreakInCurrentSession = false
         ritualSessionSummary = nil
         modeSessionSummary = nil
         focusMetricsSummary = nil
@@ -359,6 +417,7 @@ final class BlockSetupViewModel: ObservableObject {
         blocker.clearAppInstallationBlocking()
         blocker.clearSensitiveWebContentBlocking()
         sharedSuppressionStore.setModeActive(false)
+        activeModeSnapshotStore.clear()
         sharedSuppressionStore.replaceSuppressions([:])
         sharedStrictModeStore.remove(userID: userID)
         sharedAppInstallationBlockStore.remove(userID: userID)
@@ -424,6 +483,7 @@ final class BlockSetupViewModel: ObservableObject {
         }
 
         importDeviceActivityEvents(userID: userID)
+        await syncPendingCoreModeSessionFinish(accessToken: accessToken)
 
         let operations = syncOutbox.operations(
             userID: userID,
@@ -954,6 +1014,46 @@ final class BlockSetupViewModel: ObservableObject {
         guard !events.isEmpty else { return }
 
         var importedIDs = Set<UUID>()
+        let timedModeEndEvents = events.filter {
+            $0.eventType == "mode_timed_out"
+        }
+        if let latestTimedModeEnd = timedModeEndEvents.last {
+            let matchingSessionID = activeCoreModeSession?.modeId == latestTimedModeEnd.coreRitualId
+                ? activeCoreModeSession?.id
+                : nil
+            pendingCoreModeSessionFinish = PendingCoreModeSessionFinish(
+                operationID: latestTimedModeEnd.id,
+                sessionId: matchingSessionID,
+                modeId: latestTimedModeEnd.coreRitualId,
+                status: "completed",
+                endSource: "timer",
+                tagIdentifier: nil,
+                createdAt: latestTimedModeEnd.occurredAt
+            )
+            savePendingCoreModeSessionFinish()
+            activeCoreModeSession = nil
+            sharedSuppressionStore.setModeActive(false)
+            activeModeSnapshotStore.clear()
+            modeStore.clearActiveMode()
+            modeEndActivityScheduler.cancelCurrent()
+            activeModeAccountID = nil
+
+            if case .mode = activeBlockSource {
+                clearActiveModeShield()
+                isBlocking = false
+                activeBlockSource = nil
+                blockedUntil = nil
+                remainingBlockTimeText = nil
+                countdownTimer?.invalidate()
+                blockMessage = "El límite del modo terminó y se quitaron sus restricciones."
+            }
+
+            importedIDs.formUnion(timedModeEndEvents.map(\.id))
+            deviceActivityDebugStore.log(
+                "Fin automático de modo importado para \(latestTimedModeEnd.title)."
+            )
+        }
+
         let modePreemptionEvents = events.filter {
             $0.eventType == "mode_preempted"
         }
@@ -1676,6 +1776,7 @@ final class BlockSetupViewModel: ObservableObject {
 
         if case .mode(let activeModeID) = activeBlockSource,
            activeModeID == modeID {
+            saveActiveModeSnapshot(modes[index], accountID: accountID)
             applyModeShield(
                 using: draftSelection,
                 blockAppInstallation: modes[index].blockAppInstallation,
@@ -1917,7 +2018,19 @@ final class BlockSetupViewModel: ObservableObject {
         }
     }
 
-    func startMode(_ mode: FocusMode) async -> Bool {
+    func startMode(
+        _ mode: FocusMode,
+        durationMinutes: Int? = nil
+    ) async -> Bool {
+        guard !isStartingMode else { return false }
+        isStartingMode = true
+        startingModeTitle = mode.title
+        defer {
+            isStartingMode = false
+            startingModeTitle = nil
+        }
+        await Task.yield()
+
         if !isAuthorized {
             await requestAuthorization()
         }
@@ -1981,11 +2094,35 @@ final class BlockSetupViewModel: ObservableObject {
             return false
         }
 
+        let modeEndDate = durationMinutes.flatMap {
+            Calendar.current.date(byAdding: .minute, value: $0, to: .now)
+        }
+        if let modeEndDate {
+            do {
+                try await modeEndActivityScheduler.scheduleModeEnd(
+                    for: modeToStart,
+                    accountID: accountID,
+                    at: modeEndDate
+                )
+            } catch {
+                queueCoreModeSessionFinish(
+                    status: "cancelled",
+                    endSource: "timer_setup_failed",
+                    mode: modeToStart
+                )
+                modeMessage = "No se pudo programar el apagado automático: \(error.localizedDescription)"
+                return false
+            }
+        } else {
+            modeEndActivityScheduler.cancelCurrent()
+        }
+
         unblockTask?.cancel()
         countdownTimer?.invalidate()
         selectedSchedulerID = nil
         selection = modeToStart.selection
         sharedSuppressionStore.setModeActive(true)
+        saveActiveModeSnapshot(modeToStart, accountID: accountID)
         applyModeShield(
             using: modeToStart.selection,
             blockAppInstallation: modeToStart.blockAppInstallation,
@@ -1995,12 +2132,20 @@ final class BlockSetupViewModel: ObservableObject {
         activeBlockSource = .mode(modeToStart.id)
         activeModeAccountID = accountID
         reconcileInteractiveStrictModeRestriction()
-        blockedUntil = nil
-        remainingBlockTimeText = nil
+        blockedUntil = modeEndDate
+        updateRemainingTime()
+        if let modeEndDate {
+            startCountdownTimer()
+            scheduleLocalModeEnd(for: modeToStart, at: modeEndDate)
+        }
         modeStore.saveActiveMode(modeToStart.id, accountID: accountID)
         resetModeBreakUsage()
         clearModeBreakState()
-        blockMessage = "Modo \(modeToStart.title) activo. Las restricciones se liberan con tu tag NFC."
+        if let durationMinutes {
+            blockMessage = "Modo \(modeToStart.title) activo por \(Self.formattedModeDuration(minutes: durationMinutes))."
+        } else {
+            blockMessage = "Modo \(modeToStart.title) activo. Las restricciones se liberan con tu tag NFC."
+        }
         modeMessage = nil
         deviceActivityDebugStore.log("Modo manual \(modeToStart.title) iniciado con \(modeToStart.selectedItemCount) bloqueos.")
         return true
@@ -2461,7 +2606,9 @@ final class BlockSetupViewModel: ObservableObject {
 
         blocker.clearAllShields()
         blocker.clearAllStrictModeRestrictions()
+        modeEndActivityScheduler.cancelCurrent()
         sharedSuppressionStore.setModeActive(false)
+        activeModeSnapshotStore.clear()
         modeStore.clearActiveMode()
         activeModeAccountID = nil
         activeCoreSession = nil
@@ -2529,6 +2676,7 @@ final class BlockSetupViewModel: ObservableObject {
         }
 
         if let mode {
+            modeEndActivityScheduler.cancelCurrent()
             queueCoreModeSessionFinish(
                 status: "completed",
                 endSource: endSource,
@@ -2536,6 +2684,7 @@ final class BlockSetupViewModel: ObservableObject {
                 mode: mode
             )
             sharedSuppressionStore.setModeActive(false)
+            activeModeSnapshotStore.clear()
             clearActiveModeShield()
             modeStore.clearActiveMode()
             clearModeBreakState()
@@ -2975,7 +3124,26 @@ final class BlockSetupViewModel: ObservableObject {
 
         if case .mode(let activeModeID) = activeBlockSource,
            activeModeID == mode.id {
+            if let accountID = activeAccountID {
+                saveActiveModeSnapshot(modes[index], accountID: accountID)
+            }
             reconcileInteractiveStrictModeRestriction()
+        }
+    }
+
+    func updateModeActivationOptions(_ configuredMode: FocusMode) {
+        guard let index = modes.firstIndex(where: {
+            $0.id == configuredMode.id
+        }) else {
+            return
+        }
+
+        modes[index].strictModeEnabled = configuredMode.strictModeEnabled
+        modes[index].blockAppInstallation = configuredMode.blockAppInstallation
+        modes[index].blockAdultContent = configuredMode.blockAdultContent
+
+        if let accountID = activeAccountID {
+            modeStore.save(modes, accountID: accountID)
         }
     }
 
@@ -2995,6 +3163,9 @@ final class BlockSetupViewModel: ObservableObject {
 
         if case .mode(let activeModeID) = activeBlockSource,
            activeModeID == mode.id {
+            if let accountID = activeAccountID {
+                saveActiveModeSnapshot(modes[index], accountID: accountID)
+            }
             applyModeShield(
                 using: modes[index].selection,
                 blockAppInstallation: isEnabled,
@@ -3019,6 +3190,9 @@ final class BlockSetupViewModel: ObservableObject {
 
         if case .mode(let activeModeID) = activeBlockSource,
            activeModeID == mode.id {
+            if let accountID = activeAccountID {
+                saveActiveModeSnapshot(modes[index], accountID: accountID)
+            }
             applyModeShield(
                 using: modes[index].selection,
                 blockAppInstallation: modes[index].blockAppInstallation,
@@ -3334,10 +3508,8 @@ final class BlockSetupViewModel: ObservableObject {
         activeCoreModeSession = nil
         sharedSuppressionStore.setModeActive(false)
         clearActiveModeShield()
-        modeStore.clearActiveMode()
         clearModeBreakState(cancelNotificationsFor: mode)
         resetModeBreakUsage()
-        activeModeAccountID = nil
 
         if hasLocalModeSource {
             activeBlockSource = nil
@@ -3350,10 +3522,10 @@ final class BlockSetupViewModel: ObservableObject {
         reconcileSafariContentBlocking()
 
         let ritualTitle = scheduler?.title ?? "el ritual programado"
-        modeMessage = "El modo terminó porque comenzó \(ritualTitle)."
+        modeMessage = "El modo quedó en pausa porque comenzó \(ritualTitle)."
         schedulerMessage = "\(ritualTitle) tomó prioridad sobre el modo activo."
         deviceActivityDebugStore.log(
-            "Modo interrumpido por \(ritualTitle) origen=\(detectedByExtension ? "extension" : "app")."
+            "Modo pausado por \(ritualTitle) origen=\(detectedByExtension ? "extension" : "app")."
         )
     }
 
@@ -3430,6 +3602,65 @@ final class BlockSetupViewModel: ObservableObject {
         remainingBlockTimeText = nil
         countdownTimer?.invalidate()
         blockMessage = "El temporizador termino y rituo. libero el acceso a las apps."
+
+        if case .scheduled = source,
+           let accountID = activeAccountID {
+            restoreActiveModeIfNeeded(accountID: accountID)
+        }
+    }
+
+    private func scheduleLocalModeEnd(for mode: FocusMode, at endDate: Date) {
+        unblockTask?.cancel()
+        unblockTask = Task { [weak self] in
+            let delay = max(0, endDate.timeIntervalSinceNow)
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self?.finishTimedMode(mode)
+            }
+        }
+    }
+
+    private func restoreModeEndTimerIfNeeded(for mode: FocusMode) {
+        guard let endDate = modeEndActivityScheduler.scheduledEndDate else {
+            blockedUntil = nil
+            remainingBlockTimeText = nil
+            return
+        }
+
+        blockedUntil = endDate
+        updateRemainingTime()
+        startCountdownTimer()
+        scheduleLocalModeEnd(for: mode, at: endDate)
+    }
+
+    private func finishTimedMode(_ mode: FocusMode) {
+        let isVisibleMode: Bool = {
+            guard case .mode(let modeID) = activeBlockSource else {
+                return false
+            }
+            return modeID == mode.id
+        }()
+
+        if isVisibleMode {
+            endBlock(endSource: "timer")
+            return
+        }
+
+        modeEndActivityScheduler.cancelCurrent()
+        queueCoreModeSessionFinish(
+            status: "completed",
+            endSource: "timer",
+            mode: mode
+        )
+        sharedSuppressionStore.setModeActive(false)
+        activeModeSnapshotStore.clear()
+        modeStore.clearActiveMode()
+        activeModeAccountID = nil
+        modeMessage = "Modo \(mode.title) finalizado al alcanzar su límite."
+        deviceActivityDebugStore.log(
+            "Modo pausado \(mode.title) finalizado por temporizador."
+        )
     }
 
     private func startCountdownTimer() {
@@ -3486,11 +3717,18 @@ final class BlockSetupViewModel: ObservableObject {
             return
         }
 
+        if let scheduledEndDate = modeEndActivityScheduler.scheduledEndDate,
+           scheduledEndDate <= .now {
+            finishTimedMode(mode)
+            return
+        }
+
         unblockTask?.cancel()
         countdownTimer?.invalidate()
         selectedSchedulerID = nil
         selection = mode.selection
         sharedSuppressionStore.setModeActive(true)
+        saveActiveModeSnapshot(mode, accountID: accountID)
         restoreModeBreakUsage(for: mode)
         if isModeBreakActive, let modeBreakUntil {
             blocker.clearModeShield()
@@ -3507,9 +3745,10 @@ final class BlockSetupViewModel: ObservableObject {
         activeBlockSource = .mode(mode.id)
         activeModeAccountID = accountID
         reconcileInteractiveStrictModeRestriction()
-        blockedUntil = nil
-        remainingBlockTimeText = nil
-        blockMessage = "Modo \(mode.title) activo. Las restricciones se liberan con tu tag NFC."
+        restoreModeEndTimerIfNeeded(for: mode)
+        blockMessage = modeEndActivityScheduler.scheduledEndDate == nil
+            ? "Modo \(mode.title) activo. Las restricciones se liberan con tu tag NFC."
+            : "Modo \(mode.title) activo con apagado automático."
         deviceActivityDebugStore.log("Modo manual \(mode.title) restaurado.")
     }
 
@@ -3521,12 +3760,19 @@ final class BlockSetupViewModel: ObservableObject {
             return
         }
 
+        if let scheduledEndDate = modeEndActivityScheduler.scheduledEndDate,
+           scheduledEndDate <= .now {
+            finishTimedMode(mode)
+            return
+        }
+
         unblockTask?.cancel()
         countdownTimer?.invalidate()
         blocker.clearShield()
         selectedSchedulerID = nil
         selection = mode.selection
         sharedSuppressionStore.setModeActive(true)
+        saveActiveModeSnapshot(mode, accountID: accountID)
         restoreModeBreakUsage(for: mode)
         if isModeBreakActive, let modeBreakUntil {
             blocker.clearModeShield()
@@ -3543,10 +3789,11 @@ final class BlockSetupViewModel: ObservableObject {
         activeBlockSource = .mode(mode.id)
         activeModeAccountID = accountID
         reconcileInteractiveStrictModeRestriction()
-        blockedUntil = nil
-        remainingBlockTimeText = nil
+        restoreModeEndTimerIfNeeded(for: mode)
         modeStore.saveActiveMode(mode.id, accountID: accountID)
-        blockMessage = "Modo \(mode.title) restaurado. Las restricciones se liberan con tu tag NFC."
+        blockMessage = modeEndActivityScheduler.scheduledEndDate == nil
+            ? "Modo \(mode.title) restaurado. Las restricciones se liberan con tu tag NFC."
+            : "Modo \(mode.title) restaurado con apagado automático."
         deviceActivityDebugStore.log("Modo \(mode.title) restaurado desde sesión core \(session.id).")
     }
 
@@ -3560,9 +3807,11 @@ final class BlockSetupViewModel: ObservableObject {
         unblockTask?.cancel()
         countdownTimer?.invalidate()
         blocker.clearModeShield()
-        modeStore.clearActiveMode()
         sharedSuppressionStore.setModeActive(false)
-        activeModeAccountID = nil
+        if activeModeSnapshotStore.load() == nil {
+            modeStore.clearActiveMode()
+            activeModeAccountID = nil
+        }
         selectedSchedulerID = scheduler.id
         selection = scheduler.selection
         applyShield(
@@ -3588,8 +3837,10 @@ final class BlockSetupViewModel: ObservableObject {
 
     private func clearStaleServerBackedLocalState() {
         if case .mode = activeBlockSource {
+            modeEndActivityScheduler.cancelCurrent()
             clearActiveModeShield()
             sharedSuppressionStore.setModeActive(false)
+            activeModeSnapshotStore.clear()
             modeStore.clearActiveMode()
             activeModeAccountID = nil
             resetReconciledBlockingState(message: "El modo ya no está activo.")
@@ -3605,6 +3856,7 @@ final class BlockSetupViewModel: ObservableObject {
 
         modeStore.clearActiveMode()
         sharedSuppressionStore.setModeActive(false)
+        activeModeSnapshotStore.clear()
         blocker.clearModeShield()
         reconcileInteractiveStrictModeRestriction()
     }
@@ -4019,6 +4271,30 @@ final class BlockSetupViewModel: ObservableObject {
             blockAdultContent: blockAdultContent
         )
         reconcileSafariContentBlocking()
+    }
+
+    private func saveActiveModeSnapshot(
+        _ mode: FocusMode,
+        accountID: String
+    ) {
+        do {
+            try activeModeSnapshotStore.save(
+                SharedActiveModeSnapshot(
+                    userID: accountID,
+                    modeID: mode.id,
+                    coreModeID: mode.coreModeId,
+                    title: mode.title,
+                    selection: mode.selection,
+                    strictModeEnabled: mode.strictModeEnabled,
+                    blockAppInstallation: mode.blockAppInstallation,
+                    blockAdultContent: mode.blockAdultContent
+                )
+            )
+        } catch {
+            deviceActivityDebugStore.log(
+                "No se pudo guardar snapshot del modo \(mode.title): \(error.localizedDescription)."
+            )
+        }
     }
 
     private func scheduleModeBreakEnd(for mode: FocusMode, until breakUntil: Date) {
@@ -4653,6 +4929,19 @@ final class BlockSetupViewModel: ObservableObject {
         let minutes = remaining / 60
         let seconds = remaining % 60
         remainingBlockTimeText = String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    private static func formattedModeDuration(minutes: Int) -> String {
+        let hours = minutes / 60
+        let remainingMinutes = minutes % 60
+
+        if hours == 0 {
+            return "\(remainingMinutes) min"
+        }
+        if remainingMinutes == 0 {
+            return hours == 1 ? "1 hora" : "\(hours) horas"
+        }
+        return "\(hours) h \(remainingMinutes) min"
     }
 }
 

@@ -116,14 +116,16 @@ struct RituoRootView: View {
                 ]
             )
         }
-        .task(id: authViewModel.accessToken) {
+        .task(
+            id: "\(authViewModel.accessToken ?? "signed-out"):\(authViewModel.isRestoringSession)"
+        ) {
             blockViewModel.updateAccessToken(authViewModel.accessToken)
             blockViewModel.configureAppReviewAccount(
                 email: authViewModel.authUser?.email
             )
             if authViewModel.accessToken != nil {
                 await authViewModel.loadLegalRequirements()
-            } else {
+            } else if !authViewModel.isRestoringSession {
                 blockViewModel.clearAuthenticatedState()
                 selectedTab = .home
             }

@@ -307,7 +307,8 @@ struct FocusSetupPage: View {
                         minutes: minutes,
                         completed: completed,
                         progress: activityMaxMinutes > 0 ? Double(minutes) / Double(activityMaxMinutes) : 0,
-                        isLoading: viewModel.isLoadingSessionHistories && sessions.isEmpty
+                        isLoading: viewModel.isLoadingSessionHistories && sessions.isEmpty,
+                        usesRituoSymbol: true
                     )
 
                     if index < viewModel.modes.count - 1 {
@@ -570,6 +571,7 @@ private struct FocusActivityRow: View {
     let completed: Int
     let progress: Double
     let isLoading: Bool
+    var usesRituoSymbol = false
 
     var body: some View {
         VStack(spacing: 10) {
@@ -577,9 +579,13 @@ private struct FocusActivityRow: View {
                 ZStack {
                     RoundedRectangle(cornerRadius: 11, style: .continuous)
                         .fill(tint.opacity(0.12))
-                    Image(systemName: symbol)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(tint)
+                    if usesRituoSymbol {
+                        RituoSymbolIcon(size: 16, color: tint)
+                    } else {
+                        Image(systemName: symbol)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(tint)
+                    }
                 }
                 .frame(width: 38, height: 38)
 

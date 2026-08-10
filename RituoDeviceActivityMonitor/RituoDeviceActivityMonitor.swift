@@ -7,23 +7,35 @@ import UserNotifications
 private extension ManagedSettingsStore.Name {
     static let rituo = Self("rituo")
     static let rituoMode = Self("rituo.mode")
+    static let rituoStrictInteractive = Self("rituo.strict.interactive")
     static let rituoStrictScheduled = Self("rituo.strict.scheduled")
     static let rituoSensitiveWebGlobal = Self("rituo.sensitiveWeb.global")
 }
 
 final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
     private static let modeBreakEndActivityPrefix = "rituo.modeBreakEnd."
+    private static let modeEndActivityPrefix = "rituo.modeEnd."
+
+    private struct ActiveRitualCandidate {
+        let activity: SharedActiveRitualActivity
+        let metadata: SharedRitualActivityMetadata
+        let selection: FamilyActivitySelection
+    }
 
     private let center = DeviceActivityCenter()
     private let store = ManagedSettingsStore(named: .rituo)
     private let modeStore = ManagedSettingsStore(named: .rituoMode)
+    private let modeStrictStore = ManagedSettingsStore(named: .rituoStrictInteractive)
     private let strictStore = ManagedSettingsStore(named: .rituoStrictScheduled)
     private let sensitiveWebGlobalStore = ManagedSettingsStore(named: .rituoSensitiveWebGlobal)
     private let legacyStore = ManagedSettingsStore()
     private let selectionStore = SharedRitualSelectionStore()
     private let metadataStore = SharedRitualActivityMetadataStore()
     private let eventStore = SharedRitualActivityEventStore()
+    private let activityStateStore = SharedRitualActivityStateStore()
+    private let activeModeSnapshotStore = SharedActiveModeSnapshotStore()
     private let suppressionStore = SharedRitualSuppressionStore()
+    private let notificationDeliveryStore = SharedRitualNotificationDeliveryStore()
     private let strictModeStore = SharedStrictModeStore()
     private let sensitiveWebContentBlockStore = SharedSensitiveWebContentBlockStore()
     private let debugStore = DeviceActivityDebugStore()
@@ -38,9 +50,14 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
             return
         }
 
+        if isModeEndActivity(activity) {
+            debugStore.log("Temporizador de modo iniciado \(activity.rawValue).")
+            return
+        }
+
         guard let metadata = metadataStore.loadMetadata(for: activity.rawValue) else {
-            clearStrictModeRestriction()
-            updateSensitiveWebContentBlocking(contextEnabled: false)
+            activityStateStore.remove(activityName: activity.rawValue)
+            reconcileActiveRitualShield()
             debugStore.log("Sin metadata para \(activity.rawValue).")
             return
         }
@@ -54,39 +71,143 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
         }
 
         if suppressionStore.isSuppressed(schedulerId: metadata.schedulerId) {
-            clear(store: store)
-            clear(store: legacyStore)
-            clearStrictModeRestriction()
-            updateSensitiveWebContentBlocking(
-                contextEnabled: false,
-                userID: metadata.userID
-            )
+            activityStateStore.remove(activityName: activity.rawValue)
+            reconcileActiveRitualShield()
             debugStore.log("Inicio ignorado por supresion activa para \(metadata.title).")
             return
         }
 
-        guard let selection = selectionStore.loadSelection(for: activity.rawValue) else {
-            clearStrictModeRestriction()
-            updateSensitiveWebContentBlocking(
-                contextEnabled: false,
-                userID: metadata.userID
-            )
+        guard selectionStore.loadSelection(for: activity.rawValue) != nil else {
+            activityStateStore.remove(activityName: activity.rawValue)
+            reconcileActiveRitualShield()
             debugStore.log("Sin selection para \(activity.rawValue).")
             return
         }
 
+        activityStateStore.markActive(activityName: activity.rawValue)
+        if preemptedMode {
+            appendEvent(type: "mode_preempted", activity: activity)
+        }
+        appendEvent(type: "started", activity: activity)
+        reconcileActiveRitualShield(
+            notificationCandidate: activity
+        )
+    }
+
+    override func intervalDidEnd(for activity: DeviceActivityName) {
+        super.intervalDidEnd(for: activity)
+        debugStore.log("intervalDidEnd \(activity.rawValue).")
+
+        if isModeBreakEndActivity(activity) {
+            finishModeBreakActivity(activity, source: "end")
+            return
+        }
+
+        if isModeEndActivity(activity) {
+            finishModeEndActivity(activity)
+            return
+        }
+
+        activityStateStore.remove(activityName: activity.rawValue)
+        appendEvent(type: "ended", activity: activity)
+        reconcileActiveRitualShield()
+    }
+
+    private func reconcileActiveRitualShield(
+        notificationCandidate: DeviceActivityName? = nil
+    ) {
+        var candidates: [ActiveRitualCandidate] = []
+
+        for activeActivity in activityStateStore.activeActivities() {
+            guard let metadata = metadataStore.loadMetadata(
+                for: activeActivity.activityName
+            ),
+            !suppressionStore.isSuppressed(
+                schedulerId: metadata.schedulerId
+            ),
+            let selection = selectionStore.loadSelection(
+                for: activeActivity.activityName
+            ) else {
+                activityStateStore.remove(
+                    activityName: activeActivity.activityName
+                )
+                continue
+            }
+
+            candidates.append(
+                ActiveRitualCandidate(
+                    activity: activeActivity,
+                    metadata: metadata,
+                    selection: selection
+                )
+            )
+        }
+
+        guard let winner = candidates.min(by: { lhs, rhs in
+            if lhs.metadata.priority != rhs.metadata.priority {
+                return lhs.metadata.priority < rhs.metadata.priority
+            }
+            if lhs.activity.startedAt != rhs.activity.startedAt {
+                return lhs.activity.startedAt > rhs.activity.startedAt
+            }
+            return lhs.activity.activityName < rhs.activity.activityName
+        }) else {
+            clear(store: store)
+            clear(store: legacyStore)
+            clearStrictModeRestriction()
+            if restorePausedModeIfPossible() {
+                debugStore.log("Modo pausado restaurado al finalizar los rituales.")
+                return
+            }
+            if !suppressionStore.isModeActive() {
+                updateSensitiveWebContentBlocking(contextEnabled: false)
+            }
+            debugStore.log("Sin rituales activos; restricciones liberadas.")
+            return
+        }
+
+        applyRitualShield(
+            selection: winner.selection,
+            metadata: winner.metadata
+        )
+
+        if notificationCandidate?.rawValue == winner.activity.activityName {
+            sendRitualStartedNotification(winner.metadata)
+        }
+
+        let itemCount = winner.selection.applicationTokens.count
+            + winner.selection.categoryTokens.count
+            + winner.selection.webDomainTokens.count
+        debugStore.log(
+            "Ritual prioritario \(winner.metadata.title) aplicado items=\(itemCount) priority=\(winner.metadata.priority) active=\(candidates.count)."
+        )
+    }
+
+    private func applyRitualShield(
+        selection: FamilyActivitySelection,
+        metadata: SharedRitualActivityMetadata
+    ) {
         clear(store: legacyStore)
         clear(store: store)
-        store.shield.applications = selection.applicationTokens.isEmpty ? nil : selection.applicationTokens
-        store.shield.webDomains = selection.webDomainTokens.isEmpty ? nil : selection.webDomainTokens
+        store.shield.applications = selection.applicationTokens.isEmpty
+            ? nil
+            : selection.applicationTokens
+        store.shield.webDomains = selection.webDomainTokens.isEmpty
+            ? nil
+            : selection.webDomainTokens
 
         if selection.categoryTokens.isEmpty {
             store.shield.applicationCategories = nil
         } else {
-            store.shield.applicationCategories = .specific(selection.categoryTokens, except: [])
+            store.shield.applicationCategories = .specific(
+                selection.categoryTokens,
+                except: []
+            )
         }
 
-        store.application.denyAppInstallation = metadata.blockAppInstallation ? true : nil
+        store.application.denyAppInstallation = metadata.blockAppInstallation
+            ? true
+            : nil
         store.webContent.blockedByFilter = metadata.blockAdultContent
             ? .auto(SensitiveWebDomainCatalog.blockedDomains)
             : nil
@@ -101,34 +222,6 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
         )
             ? true
             : nil
-
-        let itemCount = selection.applicationTokens.count + selection.categoryTokens.count + selection.webDomainTokens.count
-        if preemptedMode {
-            appendEvent(type: "mode_preempted", activity: activity)
-        }
-        sendRitualStartedNotification(metadata)
-        appendEvent(type: "started", activity: activity)
-        debugStore.log(
-            "Shield aplicado items=\(itemCount) strict=\(metadata.strictModeEnabled) blockInstall=\(metadata.blockAppInstallation)."
-        )
-    }
-
-    override func intervalDidEnd(for activity: DeviceActivityName) {
-        super.intervalDidEnd(for: activity)
-        debugStore.log("intervalDidEnd \(activity.rawValue).")
-
-        if isModeBreakEndActivity(activity) {
-            finishModeBreakActivity(activity, source: "end")
-            return
-        }
-
-        clear(store: store)
-        clear(store: legacyStore)
-        clearStrictModeRestriction()
-        if !suppressionStore.isModeActive() {
-            updateSensitiveWebContentBlocking(contextEnabled: false)
-        }
-        appendEvent(type: "ended", activity: activity)
     }
 
     override func intervalWillStartWarning(for activity: DeviceActivityName) {
@@ -154,7 +247,41 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
 
     private func clearModeStores() {
         clear(store: modeStore)
+        modeStrictStore.application.denyAppRemoval = nil
         updateSensitiveWebContentBlocking(contextEnabled: false)
+    }
+
+    private func restorePausedModeIfPossible() -> Bool {
+        guard let snapshot = activeModeSnapshotStore.load() else {
+            return false
+        }
+
+        let selectedItemCount = snapshot.selection.applicationTokens.count
+            + snapshot.selection.categoryTokens.count
+            + snapshot.selection.webDomainTokens.count
+        guard selectedItemCount > 0 ||
+                snapshot.strictModeEnabled ||
+                snapshot.blockAppInstallation ||
+                snapshot.blockAdultContent else {
+            return false
+        }
+
+        applyMode(
+            snapshot.selection,
+            blockAppInstallation: snapshot.blockAppInstallation,
+            blockAdultContent: snapshot.blockAdultContent
+        )
+        modeStrictStore.application.denyAppRemoval = (
+            snapshot.strictModeEnabled ||
+            strictModeStore.isEnabled(userID: snapshot.userID)
+        )
+            ? true
+            : nil
+        suppressionStore.setModeActive(true)
+        debugStore.log(
+            "Modo \(snapshot.title) restaurado desde snapshot compartido."
+        )
+        return true
     }
 
     private func cancelModeBreakForPreemption() {
@@ -198,6 +325,20 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
 
     private func isModeBreakEndActivity(_ activity: DeviceActivityName) -> Bool {
         activity.rawValue.hasPrefix(Self.modeBreakEndActivityPrefix)
+    }
+
+    private func isModeEndActivity(_ activity: DeviceActivityName) -> Bool {
+        activity.rawValue.hasPrefix(Self.modeEndActivityPrefix)
+    }
+
+    private func finishModeEndActivity(_ activity: DeviceActivityName) {
+        clearModeStores()
+        activeModeSnapshotStore.clear()
+        suppressionStore.setModeActive(false)
+        appendEvent(type: "mode_timed_out", activity: activity)
+        metadataStore.removeMetadata(for: activity.rawValue)
+        center.stopMonitoring([activity])
+        debugStore.log("Modo finalizado automáticamente \(activity.rawValue).")
     }
 
     private func finishModeBreakActivity(
@@ -261,6 +402,16 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
     private func sendRitualStartedNotification(
         _ metadata: SharedRitualActivityMetadata
     ) {
+        guard notificationDeliveryStore.claimStartNotification(
+            schedulerId: metadata.schedulerId,
+            validUntil: plannedEndDate(for: metadata)
+        ) else {
+            debugStore.log(
+                "Notificación inicio ritual omitida por duplicado para \(metadata.title)."
+            )
+            return
+        }
+
         let identifier = "rituo.ritual.started.\(metadata.schedulerId)"
         let content = UNMutableNotificationContent()
         content.title = "Tu ritual empezó"
@@ -279,9 +430,6 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
             trigger: nil
         )
         let notificationCenter = UNUserNotificationCenter.current()
-        notificationCenter.removeDeliveredNotifications(
-            withIdentifiers: [identifier]
-        )
         notificationCenter.add(request) { [debugStore] error in
             if let error {
                 debugStore.log(

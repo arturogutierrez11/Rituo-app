@@ -334,12 +334,13 @@ struct LoginBottomSheet: View {
                     } else {
                         EmailSignUpForm(
                             isLoading: authViewModel.isLoading,
-                            submit: { firstName, lastName, email, password, passwordConfirmation in
+                            submit: { firstName, lastName, dateOfBirth, email, password, passwordConfirmation in
                                 Task {
                                     await authViewModel.registerWithEmail(
                                         email: email,
                                         firstName: firstName,
                                         lastName: lastName,
+                                        dateOfBirth: dateOfBirth,
                                         password: password,
                                         passwordConfirmation: passwordConfirmation
                                     )
@@ -760,10 +761,13 @@ struct ForgotPasswordForm: View {
 
 struct EmailSignUpForm: View {
     let isLoading: Bool
-    let submit: (String, String, String, String, String) -> Void
+    let submit: (String, String, Date?, String, String, String) -> Void
 
     @State private var firstName = ""
     @State private var lastName = ""
+    @State private var dateOfBirth: Date?
+    @State private var draftDateOfBirth = Date()
+    @State private var showsDateOfBirthPicker = false
     @State private var email = ""
     @State private var password = ""
     @State private var passwordConfirmation = ""
@@ -780,6 +784,52 @@ struct EmailSignUpForm: View {
                     TextField("Apellido", text: $lastName)
                         .textContentType(.familyName)
                 }
+
+                Button {
+                    draftDateOfBirth = dateOfBirth ?? Calendar.current.date(
+                        byAdding: .year,
+                        value: -16,
+                        to: Date()
+                    ) ?? Date()
+                    showsDateOfBirthPicker = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(RituoPalette.white.opacity(0.36))
+                            .frame(width: 22)
+
+                        Text(
+                            dateOfBirth.map {
+                                Self.displayDateFormatter.string(from: $0)
+                            } ?? "Fecha de nacimiento"
+                        )
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(
+                                dateOfBirth == nil
+                                    ? RituoPalette.white.opacity(0.36)
+                                    : RituoPalette.white
+                            )
+
+                        Spacer(minLength: 0)
+
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(RituoPalette.white.opacity(0.28))
+                    }
+                    .padding(.horizontal, 16)
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(RituoPalette.white.opacity(0.06))
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(RituoPalette.white.opacity(0.08), lineWidth: 1)
+                    }
+                }
+                .buttonStyle(LoginPressButtonStyle())
+                .disabled(isLoading)
 
                 LoginTextFieldChrome(systemImage: "envelope", placeholder: "Correo") {
                     TextField("Correo", text: $email)
@@ -801,7 +851,7 @@ struct EmailSignUpForm: View {
             }
 
             Button {
-                submit(firstName, lastName, email, password, passwordConfirmation)
+                submit(firstName, lastName, dateOfBirth, email, password, passwordConfirmation)
             } label: {
                 HStack(spacing: 10) {
                     Text("Crear cuenta")
@@ -818,7 +868,51 @@ struct EmailSignUpForm: View {
             .disabled(isLoading)
             .opacity(isLoading ? 0.65 : 1)
         }
+        .sheet(isPresented: $showsDateOfBirthPicker) {
+            NavigationStack {
+                DatePicker(
+                    "Fecha de nacimiento",
+                    selection: $draftDateOfBirth,
+                    in: Self.earliestDateOfBirth ... Date(),
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.graphical)
+                .environment(\.locale, Locale(identifier: "es_AR"))
+                .padding()
+                .navigationTitle("Fecha de nacimiento")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancelar") {
+                            showsDateOfBirthPicker = false
+                        }
+                    }
+
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Confirmar") {
+                            dateOfBirth = draftDateOfBirth
+                            showsDateOfBirthPicker = false
+                        }
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
     }
+
+    private static let earliestDateOfBirth = Calendar.current.date(
+        byAdding: .year,
+        value: -120,
+        to: Date()
+    ) ?? Date.distantPast
+
+    private static let displayDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "es_AR")
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter
+    }()
 }
 
 struct LoginTextFieldChrome<Content: View>: View {
