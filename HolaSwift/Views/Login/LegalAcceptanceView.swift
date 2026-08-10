@@ -2,11 +2,19 @@ import SwiftUI
 
 struct LegalAcceptanceView: View {
     @ObservedObject var authViewModel: AuthViewModel
-    @State private var hasAccepted = false
+    @State private var acceptedDocumentIDs: Set<String> = []
     @State private var selectedDocument: LegalDocumentResponse?
 
     private var documents: [LegalDocumentResponse] {
-        authViewModel.legalRequirements?.documents ?? []
+        (authViewModel.legalRequirements?.documents ?? []).sorted { left, right in
+            left.type == .terms && right.type == .privacy
+        }
+    }
+
+    private var hasAcceptedEveryDocument: Bool {
+        !documents.isEmpty && documents.allSatisfy {
+            acceptedDocumentIDs.contains($0.id)
+        }
     }
 
     var body: some View {
@@ -86,22 +94,38 @@ struct LegalAcceptanceView: View {
                             }
                     )
 
-                    Button {
-                        hasAccepted.toggle()
-                    } label: {
-                        HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: hasAccepted ? "checkmark.square.fill" : "square")
-                                .font(.system(size: 22, weight: .semibold))
-                                .foregroundStyle(hasAccepted ? RituoPalette.lightBlue : RituoPalette.white.opacity(0.40))
+                    VStack(spacing: 16) {
+                        ForEach(documents) { document in
+                            let wasPreviouslyAccepted = document.acceptedAt != nil
+                            let isAccepted = acceptedDocumentIDs.contains(document.id)
 
-                            Text(acceptanceText)
-                                .font(.system(size: 14))
-                                .foregroundStyle(RituoPalette.white.opacity(0.76))
-                                .multilineTextAlignment(.leading)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Button {
+                                if isAccepted {
+                                    acceptedDocumentIDs.remove(document.id)
+                                } else {
+                                    acceptedDocumentIDs.insert(document.id)
+                                }
+                            } label: {
+                                HStack(alignment: .top, spacing: 12) {
+                                    Image(systemName: isAccepted ? "checkmark.square.fill" : "square")
+                                        .font(.system(size: 22, weight: .semibold))
+                                        .foregroundStyle(
+                                            isAccepted
+                                                ? RituoPalette.lightBlue
+                                                : RituoPalette.white.opacity(0.40)
+                                        )
+
+                                    Text(acceptanceText(for: document, wasPreviouslyAccepted: wasPreviouslyAccepted))
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(RituoPalette.white.opacity(0.76))
+                                        .multilineTextAlignment(.leading)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(wasPreviouslyAccepted)
                         }
                     }
-                    .buttonStyle(.plain)
 
                     if let error = authViewModel.legalRequirementsError {
                         Text(error)
@@ -126,8 +150,8 @@ struct LegalAcceptanceView: View {
                         .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
-                    .disabled(!hasAccepted || authViewModel.isAcceptingLegalDocuments)
-                    .opacity(hasAccepted ? 1 : 0.42)
+                    .disabled(!hasAcceptedEveryDocument || authViewModel.isAcceptingLegalDocuments)
+                    .opacity(hasAcceptedEveryDocument ? 1 : 0.42)
 
                     Button("Cerrar sesión") {
                         authViewModel.signOut()
@@ -142,14 +166,31 @@ struct LegalAcceptanceView: View {
         .sheet(item: $selectedDocument) { document in
             LegalDocumentDetailView(document: document)
         }
+        .onAppear {
+            synchronizePreviouslyAcceptedDocuments()
+        }
+        .onChange(of: documents) { _, _ in
+            synchronizePreviouslyAcceptedDocuments()
+        }
     }
 
-    private var acceptanceText: String {
-        let names = documents.map(\.type.displayName)
-        if names.count == 1, let name = names.first {
-            return "Leí y acepto \(name)."
+    private func acceptanceText(
+        for document: LegalDocumentResponse,
+        wasPreviouslyAccepted: Bool
+    ) -> String {
+        if wasPreviouslyAccepted {
+            return "Ya aceptaste \(document.type.displayName), versión \(document.version)."
         }
-        return "Leí y acepto los documentos legales indicados."
+
+        return "Leí y acepto \(document.type.displayName)."
+    }
+
+    private func synchronizePreviouslyAcceptedDocuments() {
+        acceptedDocumentIDs.formUnion(
+            documents.compactMap { document in
+                document.acceptedAt == nil ? nil : document.id
+            }
+        )
     }
 }
 

@@ -69,6 +69,8 @@ final class AuthViewModel: ObservableObject {
                 accessToken: accessToken
             )
             hasCheckedLegalRequirements = true
+        } catch is CancellationError {
+            return
         } catch {
             legalRequirementsError = "Necesitamos conexión para verificar los términos vigentes. Revisá internet y volvé a intentar."
             print("Legal requirements error:", error)
@@ -526,6 +528,7 @@ final class AuthViewModel: ObservableObject {
         email: String,
         firstName: String,
         lastName: String,
+        dateOfBirth: Date?,
         password: String,
         passwordConfirmation: String
     ) async {
@@ -544,6 +547,29 @@ final class AuthViewModel: ObservableObject {
 
         guard !cleanLastName.isEmpty else {
             errorMessage = "Ingresá tu apellido."
+            return
+        }
+
+        guard let dateOfBirth else {
+            errorMessage = "Ingresá tu fecha de nacimiento."
+            return
+        }
+
+        let calendar = Calendar(identifier: .gregorian)
+        let today = calendar.startOfDay(for: Date())
+        let normalizedDateOfBirth = calendar.startOfDay(for: dateOfBirth)
+
+        guard normalizedDateOfBirth <= today else {
+            errorMessage = "La fecha de nacimiento no puede ser futura."
+            return
+        }
+
+        guard let sixteenthBirthday = calendar.date(
+            byAdding: .year,
+            value: 16,
+            to: normalizedDateOfBirth
+        ), sixteenthBirthday <= today else {
+            errorMessage = "Tenés que tener al menos 16 años para crear una cuenta."
             return
         }
 
@@ -570,6 +596,7 @@ final class AuthViewModel: ObservableObject {
                 email: cleanEmail,
                 firstName: cleanFirstName,
                 lastName: cleanLastName,
+                dateOfBirth: Self.apiDateFormatter.string(from: normalizedDateOfBirth),
                 password: password,
                 passwordConfirmation: passwordConfirmation,
                 deviceId: currentDeviceId(),
@@ -581,6 +608,12 @@ final class AuthViewModel: ObservableObject {
                 : "Cuenta creada. Ya podés iniciar sesión."
             pendingVerificationEmail = response.emailVerificationRequired ? cleanEmail : nil
         } catch {
+            if let authError = error as? AuthAPIError,
+               authError.containsServerMessage("at least 16 years old") {
+                errorMessage = "Tenés que tener al menos 16 años para crear una cuenta."
+                return
+            }
+
             handleAuthRequestError(error)
             print("Email register error:", error)
         }
@@ -643,4 +676,13 @@ final class AuthViewModel: ObservableObject {
     private func currentDeviceLabel() -> String {
         UIDevice.current.name
     }
+
+    private static let apiDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
 }

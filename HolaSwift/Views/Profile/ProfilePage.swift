@@ -427,7 +427,9 @@ struct ProfilePage: View {
     // MARK: - Computed
 
     private var legalDocuments: [LegalDocumentResponse] {
-        authViewModel.legalRequirements?.documents ?? []
+        (authViewModel.legalRequirements?.documents ?? []).sorted { left, right in
+            left.type == .terms && right.type == .privacy
+        }
     }
 
     private var displayName: String {
