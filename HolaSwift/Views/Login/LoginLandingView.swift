@@ -661,10 +661,12 @@ struct EmailSignInForm: View {
                         .textContentType(.username)
                 }
 
-                LoginTextFieldChrome(systemImage: "lock", placeholder: "Contraseña") {
-                    SecureField("Contraseña", text: $password)
-                        .textContentType(.password)
-                }
+                LoginPasswordField(
+                    systemImage: "lock",
+                    placeholder: "Contraseña",
+                    text: $password,
+                    textContentType: .password
+                )
             }
 
             Button {
@@ -839,15 +841,19 @@ struct EmailSignUpForm: View {
                         .textContentType(.emailAddress)
                 }
 
-                LoginTextFieldChrome(systemImage: "lock", placeholder: "Contraseña") {
-                    SecureField("Contraseña", text: $password)
-                        .textContentType(.newPassword)
-                }
+                LoginPasswordField(
+                    systemImage: "lock",
+                    placeholder: "Contraseña",
+                    text: $password,
+                    textContentType: .newPassword
+                )
 
-                LoginTextFieldChrome(systemImage: "lock.shield", placeholder: "Repetir contraseña") {
-                    SecureField("Repetir contraseña", text: $passwordConfirmation)
-                        .textContentType(.newPassword)
-                }
+                LoginPasswordField(
+                    systemImage: "lock.shield",
+                    placeholder: "Repetir contraseña",
+                    text: $passwordConfirmation,
+                    textContentType: .newPassword
+                )
             }
 
             Button {
@@ -913,6 +919,47 @@ struct EmailSignUpForm: View {
         formatter.timeStyle = .none
         return formatter
     }()
+}
+
+struct LoginPasswordField: View {
+    let systemImage: String
+    let placeholder: String
+    @Binding var text: String
+    let textContentType: UITextContentType
+
+    @State private var isPasswordVisible = false
+
+    var body: some View {
+        LoginTextFieldChrome(systemImage: systemImage, placeholder: placeholder) {
+            HStack(spacing: 8) {
+                Group {
+                    if isPasswordVisible {
+                        TextField(placeholder, text: $text)
+                    } else {
+                        SecureField(placeholder, text: $text)
+                    }
+                }
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .textContentType(textContentType)
+
+                Button {
+                    isPasswordVisible.toggle()
+                } label: {
+                    Image(systemName: isPasswordVisible ? "eye.slash" : "eye")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(RituoPalette.white.opacity(0.55))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    isPasswordVisible ? "Ocultar contraseña" : "Mostrar contraseña"
+                )
+                .accessibilityHint("Cambia la visibilidad de la contraseña")
+            }
+        }
+    }
 }
 
 struct LoginTextFieldChrome<Content: View>: View {

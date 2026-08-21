@@ -227,9 +227,12 @@ final class RitualNotificationService {
 
     private func scheduleEndNotification(for scheduler: RitualScheduler) {
         for weekday in scheduler.weekdays {
+            // Overnight rituals (end earlier than start) finish on the following weekday.
+            let endWeekday = scheduler.crossesMidnight ? (weekday % 7 + 1) : weekday
+
             var components = DateComponents()
             components.calendar = calendar
-            components.weekday = weekday
+            components.weekday = endWeekday
             components.hour = scheduler.endHour
             components.minute = scheduler.endMinute
 
@@ -285,9 +288,11 @@ final class RitualNotificationService {
 
     private func nextEndDate(for scheduler: RitualScheduler, now: Date = .now) -> Date? {
         scheduler.weekdays.compactMap { weekday in
+            let endWeekday = scheduler.crossesMidnight ? (weekday % 7 + 1) : weekday
+
             var components = DateComponents()
             components.calendar = calendar
-            components.weekday = weekday
+            components.weekday = endWeekday
             components.hour = scheduler.endHour
             components.minute = scheduler.endMinute
             components.second = 0

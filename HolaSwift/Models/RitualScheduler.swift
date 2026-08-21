@@ -59,7 +59,15 @@ struct RitualScheduler: Identifiable, Hashable, Codable {
     }
 
     var durationMinutes: Int {
-        ((endHour * 60) + endMinute) - ((startHour * 60) + startMinute)
+        let startTotal = (startHour * 60) + startMinute
+        let endTotal = (endHour * 60) + endMinute
+        if endTotal == startTotal { return 0 }
+        return endTotal < startTotal ? (24 * 60 - startTotal + endTotal) : (endTotal - startTotal)
+    }
+
+    /// True when the ritual's window crosses midnight (end time is earlier in the day than start time).
+    var crossesMidnight: Bool {
+        (endHour * 60 + endMinute) < (startHour * 60 + startMinute)
     }
 
     var appCount: Int {
@@ -124,28 +132,52 @@ struct RitualScheduler: Identifiable, Hashable, Codable {
 
     func isActive(on date: Date = .now) -> Bool {
         let calendar = Calendar.current
-        let weekday = calendar.component(.weekday, from: date)
-        guard weekdays.contains(weekday) else {
-            return false
-        }
-
         let minutes = calendar.component(.hour, from: date) * 60 + calendar.component(.minute, from: date)
         let start = startHour * 60 + startMinute
         let end = endHour * 60 + endMinute
-        return minutes >= start && minutes < end
+        guard start != end else { return false }
+
+        let weekday = calendar.component(.weekday, from: date)
+
+        if !crossesMidnight {
+            guard weekdays.contains(weekday) else { return false }
+            return minutes >= start && minutes < end
+        }
+
+        // Overnight ritual: active either from `start` until midnight (today is a
+        // configured weekday) or from midnight until `end` (today is the day after
+        // a configured weekday, finishing off last night's window).
+        if weekdays.contains(weekday) && minutes >= start {
+            return true
+        }
+
+        let previousWeekday = weekday == 1 ? 7 : weekday - 1
+        return weekdays.contains(previousWeekday) && minutes < end
     }
 
     func endDate(on date: Date = .now) -> Date? {
         let calendar = Calendar.current
-        guard weekdays.contains(calendar.component(.weekday, from: date)) else {
-            return nil
+        let weekday = calendar.component(.weekday, from: date)
+
+        func endDate(onCalendarDayOf referenceDate: Date) -> Date? {
+            var components = calendar.dateComponents([.year, .month, .day], from: referenceDate)
+            components.hour = endHour
+            components.minute = endMinute
+            components.second = 0
+            return calendar.date(from: components)
         }
 
-        var components = calendar.dateComponents([.year, .month, .day], from: date)
-        components.hour = endHour
-        components.minute = endMinute
-        components.second = 0
-        return calendar.date(from: components)
+        if weekdays.contains(weekday) {
+            guard let sameDayEnd = endDate(onCalendarDayOf: date) else { return nil }
+            return crossesMidnight ? calendar.date(byAdding: .day, value: 1, to: sameDayEnd) : sameDayEnd
+        }
+
+        let previousWeekday = weekday == 1 ? 7 : weekday - 1
+        if crossesMidnight && weekdays.contains(previousWeekday) {
+            return endDate(onCalendarDayOf: date)
+        }
+
+        return nil
     }
 
     private static func format(hour: Int, minute: Int) -> String {

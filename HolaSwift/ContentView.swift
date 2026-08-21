@@ -1,5 +1,60 @@
+import CoreHaptics
 import FamilyControls
 import SwiftUI
+import UIKit
+
+@MainActor
+private final class InitialViewHapticPlayer {
+    static let shared = InitialViewHapticPlayer()
+
+    private var engine: CHHapticEngine?
+    private var player: CHHapticPatternPlayer?
+    private var hasPlayed = false
+
+    private init() {}
+
+    func playOnce() {
+        guard !hasPlayed else { return }
+        hasPlayed = true
+
+        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else {
+            UIImpactFeedbackGenerator(style: .heavy).impactOccurred(intensity: 1.0)
+            return
+        }
+
+        do {
+            let engine = try CHHapticEngine()
+            engine.isAutoShutdownEnabled = true
+            try engine.start()
+
+            let punch = CHHapticEvent(
+                eventType: .hapticTransient,
+                parameters: [
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0),
+                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.8)
+                ],
+                relativeTime: 0
+            )
+            let buzz = CHHapticEvent(
+                eventType: .hapticContinuous,
+                parameters: [
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.85),
+                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.55)
+                ],
+                relativeTime: 0.02,
+                duration: 0.45
+            )
+            let pattern = try CHHapticPattern(events: [punch, buzz], parameters: [])
+            let player = try engine.makePlayer(with: pattern)
+
+            self.engine = engine
+            self.player = player
+            try player.start(atTime: CHHapticTimeImmediate)
+        } catch {
+            UIImpactFeedbackGenerator(style: .heavy).impactOccurred(intensity: 1.0)
+        }
+    }
+}
 
 struct RituoRootView: View {
     @Environment(\.scenePhase) private var scenePhase
@@ -131,6 +186,7 @@ struct RituoRootView: View {
             }
         }
         .task {
+            InitialViewHapticPlayer.shared.playOnce()
             await checkForAppUpdate()
         }
         .task(id: authViewModel.legalAccessTaskID) {

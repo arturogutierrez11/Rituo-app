@@ -1,3 +1,4 @@
+import AVKit
 import SwiftUI
 import UserNotifications
 
@@ -6,6 +7,7 @@ struct ProfilePage: View {
     @ObservedObject var authViewModel: AuthViewModel
     @State private var selectedLegalDocument: LegalDocumentResponse?
     @State private var isSignOutConfirmationPresented = false
+    @State private var isDemoVideoPresented = false
     @State private var isSettingsPresented = false
     @State private var settingsScrollAnchor: ProfileSettingsSection?
     @State private var appeared = false
@@ -37,13 +39,17 @@ struct ProfilePage: View {
                         .opacity(appeared ? 1 : 0)
                         .animation(.spring(response: 0.50, dampingFraction: 0.82).delay(0.17), value: appeared)
 
-                    aboutCard
+                    demoCard
                         .opacity(appeared ? 1 : 0)
                         .animation(.spring(response: 0.50, dampingFraction: 0.82).delay(0.21), value: appeared)
 
+                    aboutCard
+                        .opacity(appeared ? 1 : 0)
+                        .animation(.spring(response: 0.50, dampingFraction: 0.82).delay(0.25), value: appeared)
+
                     signOutButton
                         .opacity(appeared ? 1 : 0)
-                        .animation(.spring(response: 0.50, dampingFraction: 0.82).delay(0.24), value: appeared)
+                        .animation(.spring(response: 0.50, dampingFraction: 0.82).delay(0.28), value: appeared)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 62)
@@ -63,6 +69,9 @@ struct ProfilePage: View {
         }
         .sheet(item: $selectedLegalDocument) { document in
             LegalDocumentDetailView(document: document)
+        }
+        .fullScreenCover(isPresented: $isDemoVideoPresented) {
+            DemoVideoSheet()
         }
         .sheet(isPresented: $isSignOutConfirmationPresented) {
             RituoBottomActionSheet(
@@ -365,6 +374,21 @@ struct ProfilePage: View {
         }
     }
 
+    // MARK: - Demo card
+
+    private var demoCard: some View {
+        VStack(spacing: 0) {
+            profileSectionLabel("Demo")
+            VStack(spacing: 0) {
+                Button { isDemoVideoPresented = true } label: {
+                    profileLinkRowFn(symbol: "play.circle", label: "Cómo funciona Rituo", detail: nil)
+                }
+                .buttonStyle(.plain)
+            }
+            .background(profileCardBg)
+        }
+    }
+
     // MARK: - About card
 
     private var aboutCard: some View {
@@ -587,6 +611,53 @@ var profileCardBg: some View {
                 .stroke(RituoPalette.white.opacity(0.06), lineWidth: 1)
         }
         .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
+}
+
+// MARK: - Demo video
+
+struct DemoVideoSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            if let player {
+                VideoPlayer(player: player)
+                    .ignoresSafeArea()
+                    .onAppear { player.play() }
+                    .onDisappear { player.pause() }
+            } else {
+                ProgressView()
+                    .tint(.white)
+            }
+
+            VStack {
+                HStack {
+                    Spacer()
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .background(Color.black.opacity(0.45), in: Circle())
+                    }
+                    .accessibilityLabel("Cerrar")
+                }
+                Spacer()
+            }
+            .padding(.top, 12)
+            .padding(.trailing, 16)
+        }
+        .task {
+            guard player == nil,
+                  let url = Bundle.main.url(forResource: "rituo_demo", withExtension: "mp4") else { return }
+            player = AVPlayer(url: url)
+        }
+    }
 }
 
 // MARK: - Profile Avatar

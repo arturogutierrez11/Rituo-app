@@ -2774,8 +2774,8 @@ final class BlockSetupViewModel: ObservableObject {
         let startTotal = startHour * 60 + startMinute
         let endTotal = endHour * 60 + endMinute
 
-        guard endTotal > startTotal else {
-            schedulerMessage = "La hora de fin tiene que ser posterior a la de inicio."
+        guard endTotal != startTotal else {
+            schedulerMessage = "La hora de fin tiene que ser distinta a la de inicio."
             return false
         }
 

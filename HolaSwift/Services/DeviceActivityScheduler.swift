@@ -86,6 +86,9 @@ final class DeviceActivityScheduler {
                 "Agendando \(scheduler.title) \(weekday) \(Self.format(hour: scheduler.startHour, minute: scheduler.startMinute))-\(Self.format(hour: scheduler.endHour, minute: scheduler.endMinute)) items=\(scheduler.selectedItemCount)."
             )
 
+            // Overnight rituals (end time earlier than start time) end on the following weekday.
+            let endWeekday = scheduler.crossesMidnight ? (weekday % 7 + 1) : weekday
+
             let schedule = DeviceActivitySchedule(
                 intervalStart: DateComponents(
                     calendar: calendar,
@@ -97,7 +100,7 @@ final class DeviceActivityScheduler {
                     calendar: calendar,
                     hour: scheduler.endHour,
                     minute: scheduler.endMinute,
-                    weekday: weekday
+                    weekday: endWeekday
                 ),
                 repeats: true,
                 warningTime: DateComponents(minute: 2)
