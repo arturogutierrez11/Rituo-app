@@ -710,75 +710,174 @@ struct ProfileAvatar: View {
 struct RituoPhysicalCard: View {
     let label: String?
 
+    @State private var shimmerMoves = false
+    @State private var badgeGlows = false
+    @State private var grain: [GrainSpeck] = []
+
+    private let cornerRadius: CGFloat = 30
+    // Sampled from the real rituo card: a polished indigo-blue metal, lit
+    // from the top-left, deepening toward the bottom-right corner.
+    private let cardTop = Color(red: 0.36, green: 0.45, blue: 0.64)
+    private let cardMid = Color(red: 0.19, green: 0.26, blue: 0.42)
+    private let cardDeep = Color(red: 0.07, green: 0.10, blue: 0.20)
+
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(LinearGradient(
-                        colors: [
-                            Color(red: 0.28, green: 0.38, blue: 0.56),
-                            Color(red: 0.17, green: 0.23, blue: 0.38),
-                            Color(red: 0.10, green: 0.14, blue: 0.28)
-                        ],
+                        colors: [cardTop, cardMid, cardDeep],
                         startPoint: .topLeading, endPoint: .bottomTrailing
                     ))
 
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(LinearGradient(
-                        colors: [Color.white.opacity(0.18), Color.white.opacity(0.06), Color.clear],
-                        startPoint: UnitPoint(x: 0.2, y: 0),
+                        colors: [Color.white.opacity(0.22), Color.white.opacity(0.06), Color.clear],
+                        startPoint: UnitPoint(x: 0.15, y: 0),
                         endPoint: UnitPoint(x: 0.7, y: 0.55)
                     ))
 
-                Image("RituoLogoWhite")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: geo.size.width * 0.44)
-                    .opacity(0.08)
-                    .position(x: geo.size.width * 0.57, y: geo.size.height * 0.54)
+                // Fine grain so the surface reads as brushed metal rather
+                // than a flat vector fill. Positions are generated once and
+                // stored, so they stay put across the shimmer's re-renders.
+                Canvas { context, size in
+                    for speck in grain {
+                        let rect = CGRect(x: speck.x * size.width, y: speck.y * size.height, width: 1, height: 1)
+                        context.fill(Path(ellipseIn: rect), with: .color(.white.opacity(speck.opacity)))
+                    }
+                }
+                .allowsHitTesting(false)
+
+                // Soft vignette — the surface catches less light toward the
+                // edges, which reads as "molded metal" instead of "flat".
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(RadialGradient(
+                        colors: [.clear, Color.black.opacity(0.25)],
+                        center: .center, startRadius: geo.size.width * 0.25, endRadius: geo.size.width * 0.68
+                    ))
+
+                // Diagonal light sweep that drifts across the card, like the
+                // reference photo's polished-metal highlight.
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(LinearGradient(
+                        colors: [.clear, Color.white.opacity(0.18), .clear],
+                        startPoint: shimmerMoves ? UnitPoint(x: 1.3, y: -0.3) : UnitPoint(x: -0.4, y: 0.4),
+                        endPoint: shimmerMoves ? UnitPoint(x: 1.9, y: 0.3) : UnitPoint(x: 0.2, y: 1.1)
+                    ))
+                    .blendMode(.plusLighter)
+
+                // Large centered emblem, embossed into the metal — this is
+                // the card's real signature, the way it looks on the actual
+                // physical tag, not a small corner watermark.
+                RituoSymbolIcon(size: geo.size.height * 0.62, color: .white, opacity: 0.12)
+                    .position(x: geo.size.width * 0.5, y: geo.size.height * 0.52)
 
                 Text("rituo")
-                    .font(.custom("Helvetica", size: geo.size.height * 0.14).weight(.semibold))
+                    .font(.custom("Helvetica", size: geo.size.height * 0.125).weight(.semibold))
                     .tracking(0.5)
-                    .foregroundStyle(Color.white.opacity(0.88))
-                    .padding(.top, geo.size.height * 0.14)
+                    .foregroundStyle(Color.white.opacity(0.92))
+                    .padding(.top, geo.size.height * 0.12)
                     .padding(.leading, geo.size.width * 0.07)
+
+                // Contactless badge, small and quiet in the corner — the
+                // emblem in the middle is the star, not this. A gentle
+                // breathing glow behind it is the one nod to "modern".
+                ZStack {
+                    Circle()
+                        .fill(RituoPalette.lightBlue.opacity(badgeGlows ? 0.28 : 0.12))
+                        .frame(width: geo.size.height * (badgeGlows ? 0.30 : 0.22))
+                        .blur(radius: geo.size.height * 0.05)
+
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.white.opacity(0.10))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                        }
+                        .frame(width: geo.size.width * 0.115, height: geo.size.height * 0.19)
+                    Image(systemName: "wave.3.right")
+                        .font(.system(size: geo.size.height * 0.085, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.75))
+                }
+                .position(x: geo.size.width * 0.90, y: geo.size.height * 0.20)
 
                 if let label {
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: geo.size.height * 0.025) {
                         Spacer()
+                        Text("TAG NFC")
+                            .font(.custom("Helvetica", size: geo.size.height * 0.055).weight(.semibold))
+                            .tracking(1.6)
+                            .foregroundStyle(RituoPalette.lightBlue.opacity(0.85))
                         Text(label.uppercased())
-                            .font(.custom("Helvetica", size: geo.size.height * 0.11).weight(.bold))
+                            .font(.custom("Helvetica", size: geo.size.height * 0.115).weight(.bold))
                             .tracking(1.0)
-                            .foregroundStyle(Color.white.opacity(0.70))
+                            .foregroundStyle(Color.white.opacity(0.95))
                             .lineLimit(1)
-                            .minimumScaleFactor(0.7)
+                            .minimumScaleFactor(0.5)
+                            .frame(maxWidth: geo.size.width * 0.7, alignment: .leading)
                     }
-                    .padding(.bottom, geo.size.height * 0.14)
+                    .padding(.bottom, geo.size.height * 0.13)
                     .padding(.leading, geo.size.width * 0.07)
                 }
 
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .fill(Color(red: 0.22, green: 0.30, blue: 0.46).opacity(0.80))
-                                .frame(width: geo.size.width * 0.11, height: geo.size.height * 0.20)
-                            Image(systemName: "wave.3.right")
-                                .font(.system(size: geo.size.height * 0.09, weight: .medium))
-                                .foregroundStyle(Color.white.opacity(0.40))
-                        }
-                        .padding(.trailing, geo.size.width * 0.06)
-                        .padding(.bottom, geo.size.height * 0.12)
-                    }
-                }
+                // Thin accent-tinted rim light along the top edge.
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(LinearGradient(
+                        colors: [RituoPalette.lightBlue.opacity(0.20), .clear],
+                        startPoint: .top, endPoint: .center
+                    ))
+                    .blendMode(.plusLighter)
+
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.40), RituoPalette.lightBlue.opacity(0.25), Color.white.opacity(0.04)],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
             }
+            // The glossy streak layer is deliberately wider than the card (so
+            // its blur doesn't fade at its own edges), which means the ZStack
+            // would otherwise report an ideal size larger than geo.size — and
+            // clipShape clips to whatever frame the view actually has at that
+            // point, so pinning it here keeps the clip locked to the card's
+            // true bounds.
+            .frame(width: geo.size.width, height: geo.size.height)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         }
         .aspectRatio(1.586, contentMode: .fit)
-        .shadow(color: Color(red: 0.10, green: 0.14, blue: 0.28).opacity(0.55), radius: 24, x: 0, y: 12)
+        .frame(maxWidth: .infinity)
+        .background {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(RituoPalette.lightBlue.opacity(0.14))
+                .blur(radius: 26)
+        }
+        .shadow(color: Color(red: 0.05, green: 0.07, blue: 0.15).opacity(0.6), radius: 24, x: 0, y: 12)
+        .onAppear {
+            if grain.isEmpty {
+                grain = (0 ..< 220).map { _ in
+                    GrainSpeck(
+                        x: .random(in: 0 ... 1),
+                        y: .random(in: 0 ... 1),
+                        opacity: .random(in: 0.02 ... 0.06)
+                    )
+                }
+            }
+            withAnimation(.easeInOut(duration: 3.2).repeatForever(autoreverses: true)) {
+                shimmerMoves = true
+            }
+            withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
+                badgeGlows = true
+            }
+        }
     }
+}
+
+private struct GrainSpeck {
+    let x: Double
+    let y: Double
+    let opacity: Double
 }
 
 // MARK: - Legacy shared components (kept for compatibility)

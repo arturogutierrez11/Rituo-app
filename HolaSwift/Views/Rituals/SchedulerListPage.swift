@@ -8,6 +8,7 @@ struct SchedulerListPage: View {
     @Binding var selectedTab: RootTab
     let accessToken: String?
     @State private var isCreateSheetPresented = false
+    @State private var schedulerPendingEdit: RitualScheduler?
     @State private var schedulerPendingDeletion: RitualScheduler?
     @State private var isDeleteConfirmationPresented = false
     @State private var isProtectedDeletePresented = false
@@ -46,6 +47,15 @@ struct SchedulerListPage: View {
                                 sessions: viewModel.sessions(for: scheduler),
                                 isCurrentlyRunning: viewModel.isRunningInCore(scheduler),
                                 isLoadingMetrics: viewModel.isLoadingSessionHistories,
+                                editRitual: {
+                                    viewModel.validateTagForSensitiveAction(
+                                        accessToken: accessToken,
+                                        actionDescription: "editar el ritual",
+                                        alertMessage: "Acerca la tarjeta rituo (apoya el chip, a la altura de la cámara frontal) para editar el ritual."
+                                    ) {
+                                        schedulerPendingEdit = scheduler
+                                    }
+                                },
                                 deleteRitual: {
                                     schedulerPendingDeletion = scheduler
                                     deletionPassword = ""
@@ -81,6 +91,9 @@ struct SchedulerListPage: View {
         }
         .sheet(isPresented: $isCreateSheetPresented) {
             SchedulerComposerSheet(viewModel: viewModel, accessToken: accessToken)
+        }
+        .sheet(item: $schedulerPendingEdit) { scheduler in
+            SchedulerComposerSheet(viewModel: viewModel, accessToken: accessToken, editingScheduler: scheduler)
         }
         .task(id: accessToken) {
             if let accessToken {
@@ -253,6 +266,7 @@ struct RitualCard: View {
     let sessions: [RitualSessionResponse]
     let isCurrentlyRunning: Bool
     let isLoadingMetrics: Bool
+    let editRitual: () -> Void
     let deleteRitual: () -> Void
 
     @State private var isExpanded = false
@@ -385,6 +399,17 @@ struct RitualCard: View {
                         systemImage: "shield.lefthalf.filled",
                         isEnabled: scheduler.blockAdultContent
                     )
+
+                    configurationDivider
+
+                    ritualConfigurationRow(
+                        title: "Recreos",
+                        status: scheduler.breakCount > 0
+                            ? "\(scheduler.breakCount) x \(scheduler.breakDurationMinutes) min"
+                            : "Sin recreos",
+                        systemImage: "cup.and.saucer.fill",
+                        isEnabled: scheduler.breakCount > 0
+                    )
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 6)
@@ -393,14 +418,25 @@ struct RitualCard: View {
                     .fill(RituoPalette.white.opacity(0.05))
                     .frame(height: 1)
 
-                Button(action: deleteRitual) {
-                    Label("Eliminar ritual", systemImage: "trash")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(RituoPalette.danger)
-                        .frame(maxWidth: .infinity, minHeight: 40)
-                        .background(RituoPalette.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                HStack(spacing: 8) {
+                    Button(action: editRitual) {
+                        Label("Editar ritual", systemImage: "pencil")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(RituoPalette.lightBlue)
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                            .background(RituoPalette.lightBlue.opacity(0.10), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    }
+                    .buttonStyle(LoginPressButtonStyle())
+
+                    Button(action: deleteRitual) {
+                        Label("Eliminar ritual", systemImage: "trash")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(RituoPalette.danger)
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                            .background(RituoPalette.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    }
+                    .buttonStyle(LoginPressButtonStyle())
                 }
-                .buttonStyle(LoginPressButtonStyle())
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
                 .transition(.opacity.combined(with: .move(edge: .top)))

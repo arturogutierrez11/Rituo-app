@@ -5,6 +5,7 @@ struct SharedRitualSuppressionStore {
     private static let suppressionsKey = "rituo.sharedScheduledBlockSuppressions"
     private static let modeActiveKey = "rituo.sharedModeActive"
     private static let modeBreakActivityNameKey = "rituo.sharedModeBreakActivityName"
+    private static let ritualBreakActivityNameKey = "rituo.sharedRitualBreakActivityName"
 
     private let defaults: UserDefaults?
 
@@ -39,6 +40,24 @@ struct SharedRitualSuppressionStore {
 
     func modeBreakActivityName() -> String? {
         defaults?.string(forKey: Self.modeBreakActivityNameKey)
+    }
+
+    func setRitualBreakActivityName(_ name: String?) {
+        if let name {
+            defaults?.set(name, forKey: Self.ritualBreakActivityNameKey)
+        } else {
+            defaults?.removeObject(forKey: Self.ritualBreakActivityNameKey)
+        }
+    }
+
+    func ritualBreakActivityName() -> String? {
+        defaults?.string(forKey: Self.ritualBreakActivityNameKey)
+    }
+
+    func takeRitualBreakActivityName() -> String? {
+        let name = ritualBreakActivityName()
+        setRitualBreakActivityName(nil)
+        return name
     }
 
     func isSuppressed(schedulerId: String, at date: Date = .now) -> Bool {

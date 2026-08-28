@@ -5,6 +5,7 @@ struct SharedRitualSuppressionStore {
     private static let suppressionsKey = "rituo.sharedScheduledBlockSuppressions"
     private static let modeActiveKey = "rituo.sharedModeActive"
     private static let modeBreakActivityNameKey = "rituo.sharedModeBreakActivityName"
+    private static let ritualBreakActivityNameKey = "rituo.sharedRitualBreakActivityName"
 
     private let defaults: UserDefaults?
 
@@ -23,6 +24,20 @@ struct SharedRitualSuppressionStore {
     func takeModeBreakActivityName() -> String? {
         let name = defaults?.string(forKey: Self.modeBreakActivityNameKey)
         defaults?.removeObject(forKey: Self.modeBreakActivityNameKey)
+        return name
+    }
+
+    func setRitualBreakActivityName(_ name: String?) {
+        if let name {
+            defaults?.set(name, forKey: Self.ritualBreakActivityNameKey)
+        } else {
+            defaults?.removeObject(forKey: Self.ritualBreakActivityNameKey)
+        }
+    }
+
+    func takeRitualBreakActivityName() -> String? {
+        let name = defaults?.string(forKey: Self.ritualBreakActivityNameKey)
+        defaults?.removeObject(forKey: Self.ritualBreakActivityNameKey)
         return name
     }
 

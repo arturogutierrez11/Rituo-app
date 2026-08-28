@@ -38,8 +38,43 @@ struct CreateRitualRequest: Codable {
     let password: String?
 }
 
+struct UpdateRitualRequest: Codable {
+    let title: String
+    let description: String?
+    let icon: String
+    let durationMinutes: Int
+    let weekdays: [Int]
+    let startTime: String?
+    let endTime: String?
+    let appCount: Int
+    let categoryCount: Int
+    let domainCount: Int
+    let selectionDigest: String?
+    let isProtected: Bool
+    let nfcUnlockEnabled: Bool
+    let password: String?
+}
+
 struct DeleteRitualRequest: Encodable {
     let password: String?
+}
+
+/// Shared request shape for `POST /rituals/:id/breaks` and `POST /modes/:id/breaks`.
+struct SaveBreakConfigRequest: Codable {
+    let breakCount: Int
+    let breakDurationMinutes: Int
+}
+
+struct RitualBreakConfigResponse: Decodable {
+    let ritualId: String
+    let breakCount: Int
+    let breakDurationMinutes: Int
+}
+
+struct ModeBreakConfigResponse: Decodable {
+    let modeId: String
+    let breakCount: Int
+    let breakDurationMinutes: Int
 }
 
 struct RitualBlockedItemResponse: Decodable, Identifiable {

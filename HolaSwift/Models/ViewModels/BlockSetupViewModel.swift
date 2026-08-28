@@ -51,6 +51,13 @@ final class BlockSetupViewModel: ObservableObject {
         let blockedItemsRequest: ReplaceRitualBlockedItemsRequest
     }
 
+    private struct PendingRitualUpdate: Codable {
+        let localSchedulerID: UUID
+        let coreRitualID: String
+        let updateRequest: UpdateRitualRequest
+        let blockedItemsRequest: ReplaceRitualBlockedItemsRequest
+    }
+
     private struct PendingRitualDeletion: Codable {
         let scheduler: RitualScheduler
         let coreRitualID: String
@@ -80,6 +87,8 @@ final class BlockSetupViewModel: ObservableObject {
     @Published var schedulerMessage: String?
     @Published var modeMessage: String?
     @Published var tagMessage: String?
+    @Published var nfcErrorAlertMessage: String?
+    private var nfcErrorRetryAction: (() -> Void)?
     @Published var coreSyncMessage: String?
     @Published var isFocusSessionConflictPresented = false
     @Published var focusSessionConflictTitle = "Ya hay una sesión activa"
@@ -90,7 +99,10 @@ final class BlockSetupViewModel: ObservableObject {
     @Published var remainingBlockTimeText: String?
     @Published var modeBreakUntil: Date?
     @Published var modeBreakRemainingText: String?
-    @Published var hasUsedModeBreakInCurrentSession = false
+    @Published var modeBreakUsedCount = 0
+    @Published var ritualBreakUntil: Date?
+    @Published var ritualBreakRemainingText: String?
+    @Published var ritualBreakUsedCount = 0
     @Published var activeCoreSession: RitualSessionResponse?
     @Published var activeCoreModeSession: ModeSessionResponse?
     @Published var ritualSessionSummary: RitualSessionSummaryResponse?
@@ -120,6 +132,7 @@ final class BlockSetupViewModel: ObservableObject {
     private let blocker = AppBlocker()
     private let deviceActivityScheduler = DeviceActivityScheduler()
     private let modeBreakActivityScheduler = ModeBreakActivityScheduler()
+    private let ritualBreakActivityScheduler = RitualBreakActivityScheduler()
     private let modeEndActivityScheduler = ModeEndActivityScheduler()
     private let deviceActivityDebugStore = DeviceActivityDebugStore()
     private let activityEventStore = SharedRitualActivityEventStore()
@@ -139,6 +152,7 @@ final class BlockSetupViewModel: ObservableObject {
     private let defaults: UserDefaults
     private var unblockTask: Task<Void, Never>?
     private var modeBreakTask: Task<Void, Never>?
+    private var ritualBreakTask: Task<Void, Never>?
     private var delayedShieldClearTasks: [Task<Void, Never>] = []
     private var delayedModeShieldClearTasks: [Task<Void, Never>] = []
     private var countdownTimer: Timer?
@@ -157,6 +171,12 @@ final class BlockSetupViewModel: ObservableObject {
     private var isFinishingCoreModeSession = false
     private var didResolveActiveRitualSession = false
     private var didResolveActiveModeSession = false
+    /// True once the app has run its fast, local (no network required) check for
+    /// "is a ritual/mode active right now, and if so, how many breaks has it already
+    /// used." Gates the break button so it can't be tapped during the brief window
+    /// right after launch where `isBlocking` might already be true but break usage
+    /// hasn't been restored from disk yet.
+    @Published private(set) var hasReconciledBreakState = false
     private var pendingRitualPasswords: [UUID: String] = [:]
     private var pendingModePasswords: [FocusMode.ID: String] = [:]
     private var activeAccountID: String?
@@ -167,6 +187,10 @@ final class BlockSetupViewModel: ObservableObject {
     private let pendingCoreModeSessionFinishKey = "rituo.pendingCoreModeSessionFinish"
     private let modeBreakUntilKey = "rituo.modeBreakUntil"
     private let modeBreakUsedModeIDKey = "rituo.modeBreakUsedModeID"
+    private let modeBreakUsedCountKey = "rituo.modeBreakUsedCount"
+    private let ritualBreakUntilKey = "rituo.ritualBreakUntil"
+    private let ritualBreakUsedSchedulerIDKey = "rituo.ritualBreakUsedSchedulerID"
+    private let ritualBreakUsedCountKey = "rituo.ritualBreakUsedCount"
     private var activeAccessToken: String?
     private var reviewDemoTagCompletion: ((Result<NFCTagScanResult, Error>) -> Void)?
     private static let earlyMonitorEndGraceSeconds: TimeInterval = 60
@@ -208,6 +232,13 @@ final class BlockSetupViewModel: ObservableObject {
             self.modeBreakRemainingText = Self.formattedModeBreakRemaining(until: savedModeBreakUntil)
         } else {
             defaults.removeObject(forKey: modeBreakUntilKey)
+        }
+        if let savedRitualBreakUntil = defaults.object(forKey: ritualBreakUntilKey) as? Date,
+           savedRitualBreakUntil > .now {
+            self.ritualBreakUntil = savedRitualBreakUntil
+            self.ritualBreakRemainingText = Self.formattedModeBreakRemaining(until: savedRitualBreakUntil)
+        } else {
+            defaults.removeObject(forKey: ritualBreakUntilKey)
         }
         self.sharedSuppressionStore.replaceSuppressions(self.suppressedScheduledBlocks)
         rescheduleDeviceActivities()
@@ -343,6 +374,7 @@ final class BlockSetupViewModel: ObservableObject {
         activeBlockSource = nil
         didResolveActiveRitualSession = false
         didResolveActiveModeSession = false
+        hasReconciledBreakState = false
         schedulers = []
         modes = FocusMode.defaults
         selection = FamilyActivitySelection()
@@ -360,7 +392,10 @@ final class BlockSetupViewModel: ObservableObject {
         remainingBlockTimeText = nil
         modeBreakUntil = nil
         modeBreakRemainingText = nil
-        hasUsedModeBreakInCurrentSession = false
+        modeBreakUsedCount = 0
+        ritualBreakUntil = nil
+        ritualBreakRemainingText = nil
+        ritualBreakUsedCount = 0
         ritualSessionSummary = nil
         modeSessionSummary = nil
         focusMetricsSummary = nil
@@ -464,7 +499,10 @@ final class BlockSetupViewModel: ObservableObject {
         remainingBlockTimeText = nil
         modeBreakUntil = nil
         modeBreakRemainingText = nil
-        hasUsedModeBreakInCurrentSession = false
+        modeBreakUsedCount = 0
+        ritualBreakUntil = nil
+        ritualBreakRemainingText = nil
+        ritualBreakUsedCount = 0
 
         activeAccountID = nil
         if preserveAuthentication {
@@ -660,6 +698,55 @@ final class BlockSetupViewModel: ObservableObject {
         refreshSyncOutboxStatus()
     }
 
+    /// Queues a PATCH for a ritual that already exists on core-api. Rituals that
+    /// haven't synced yet (`coreRitualId == nil`) should go through
+    /// `queueRitualConfiguration` instead, which still owns the create.
+    private func queueRitualUpdate(
+        _ scheduler: RitualScheduler,
+        coreRitualID: String,
+        password: String? = nil
+    ) throws {
+        guard let userID = activeAccountID else { return }
+        let operationID = Self.scopedSyncOperationID(
+            userID: userID,
+            type: .updateRitualConfiguration,
+            scope: scheduler.id.uuidString
+        )
+        let payload = PendingRitualUpdate(
+            localSchedulerID: scheduler.id,
+            coreRitualID: coreRitualID,
+            updateRequest: scheduler.updateRitualRequest(),
+            blockedItemsRequest: scheduler.blockedItemsRequest
+        )
+
+        if let password, !password.isEmpty {
+            try keychainStore.saveSyncSecret(password, operationID: operationID)
+        }
+
+        try syncOutbox.upsertScoped(
+            id: operationID,
+            userID: userID,
+            type: .updateRitualConfiguration,
+            payload: JSONEncoder().encode(payload)
+        )
+        refreshSyncOutboxStatus()
+    }
+
+    private func removeQueuedRitualUpdate(
+        _ scheduler: RitualScheduler
+    ) {
+        guard let userID = activeAccountID else { return }
+        let operationID = Self.scopedSyncOperationID(
+            userID: userID,
+            type: .updateRitualConfiguration,
+            scope: scheduler.id.uuidString
+        )
+        keychainStore.deleteSyncSecret(operationID: operationID)
+        syncOutbox.remove(id: operationID)
+        pendingRitualPasswords.removeValue(forKey: scheduler.id)
+        refreshSyncOutboxStatus()
+    }
+
     private func queueRitualDeletion(
         _ scheduler: RitualScheduler,
         coreRitualID: String,
@@ -712,6 +799,10 @@ final class BlockSetupViewModel: ObservableObject {
             accessToken: accessToken
         )
         await syncPendingRitualConfigurations(
+            userID: userID,
+            accessToken: accessToken
+        )
+        await syncPendingRitualUpdates(
             userID: userID,
             accessToken: accessToken
         )
@@ -784,6 +875,8 @@ final class BlockSetupViewModel: ObservableObject {
                     let localStrictModeEnabled = modes[index].strictModeEnabled
                     let localBlockAppInstallation = modes[index].blockAppInstallation
                     let localBlockAdultContent = modes[index].blockAdultContent
+                    let localBreakCount = modes[index].breakCount
+                    let localBreakDurationMinutes = modes[index].breakDurationMinutes
                     modes[index] = FocusMode(
                         response: response,
                         preserving: localSelection
@@ -791,7 +884,10 @@ final class BlockSetupViewModel: ObservableObject {
                     modes[index].strictModeEnabled = localStrictModeEnabled
                     modes[index].blockAppInstallation = localBlockAppInstallation
                     modes[index].blockAdultContent = localBlockAdultContent
+                    modes[index].breakCount = localBreakCount
+                    modes[index].breakDurationMinutes = localBreakDurationMinutes
                     modeStore.save(modes, accountID: userID)
+                    await syncModeBreakConfig(coreModeID: coreModeID, localModeID: pending.localModeID, accessToken: accessToken)
                 }
                 pendingModePasswords.removeValue(forKey: pending.localModeID)
                 clearConfigurationOperation(operation)
@@ -863,6 +959,11 @@ final class BlockSetupViewModel: ObservableObject {
                     response,
                     localSchedulerID: pending.localSchedulerID
                 )
+                await syncRitualBreakConfig(
+                    coreRitualID: response.id,
+                    localSchedulerID: pending.localSchedulerID,
+                    accessToken: accessToken
+                )
                 pendingRitualPasswords.removeValue(
                     forKey: pending.localSchedulerID
                 )
@@ -874,11 +975,174 @@ final class BlockSetupViewModel: ObservableObject {
         }
     }
 
+    private func syncPendingRitualUpdates(
+        userID: String,
+        accessToken: String
+    ) async {
+        let operations = syncOutbox.operations(
+            userID: userID,
+            type: .updateRitualConfiguration
+        )
+
+        for operation in operations where syncOutbox.isDue(id: operation.id) {
+            guard let pending = try? JSONDecoder().decode(
+                PendingRitualUpdate.self,
+                from: operation.payload
+            ) else {
+                clearConfigurationOperation(operation)
+                continue
+            }
+
+            syncOutbox.markSyncing(id: operation.id)
+            do {
+                let password = keychainStore.loadSyncSecret(operationID: operation.id)
+                let response = try await coreApi.updateRitual(
+                    accessToken: accessToken,
+                    ritualId: pending.coreRitualID,
+                    body: pending.updateRequest.withPassword(password),
+                    idempotencyKey: "\(operation.idempotencyKey):config"
+                )
+                _ = try await coreApi.replaceRitualBlockedItems(
+                    accessToken: accessToken,
+                    ritualId: pending.coreRitualID,
+                    body: pending.blockedItemsRequest,
+                    idempotencyKey: "\(operation.idempotencyKey):items"
+                )
+                applyCoreRitualResponse(
+                    response,
+                    localSchedulerID: pending.localSchedulerID
+                )
+                await syncRitualBreakConfig(
+                    coreRitualID: pending.coreRitualID,
+                    localSchedulerID: pending.localSchedulerID,
+                    accessToken: accessToken
+                )
+                pendingRitualPasswords.removeValue(
+                    forKey: pending.localSchedulerID
+                )
+                clearConfigurationOperation(operation)
+            } catch {
+                if Self.isRitualNotFoundError(error) {
+                    // Ritual was deleted elsewhere (another device, or already
+                    // removed) — retrying this update forever would be pointless.
+                    clearConfigurationOperation(operation)
+                    coreSyncMessage = "Ese ritual ya no existe en tu cuenta."
+                } else if Self.isRitualPasswordError(error) {
+                    // Wrong/missing password won't fix itself on retry either.
+                    clearConfigurationOperation(operation)
+                    coreSyncMessage = error.localizedDescription
+                    if let index = schedulers.firstIndex(where: { $0.id == pending.localSchedulerID }) {
+                        schedulerMessage = "No se pudo guardar los cambios de \(schedulers[index].title): \(error.localizedDescription)"
+                    }
+                } else {
+                    // Includes RITUAL_SESSION_ACTIVE (409) — worth retrying once the
+                    // ritual's active session ends.
+                    syncOutbox.markFailure(id: operation.id, error: error)
+                    coreSyncMessage = "La edición del ritual quedó pendiente de sincronización."
+                }
+            }
+        }
+    }
+
+    private static func isRitualPasswordError(_ error: Error) -> Bool {
+        guard case let CoreAPIError.serverError(statusCode, message, _) = error else {
+            return false
+        }
+        return statusCode == 403 && message.localizedCaseInsensitiveContains("password")
+    }
+
     private func clearConfigurationOperation(
         _ operation: PendingSyncOperation
     ) {
         keychainStore.deleteSyncSecret(operationID: operation.id)
         syncOutbox.remove(id: operation.id)
+    }
+
+    /// Fetches the current break config for every synced ritual (e.g. set from another
+    /// device) and merges it into the local schedulers. Best-effort per ritual — one
+    /// failing fetch doesn't block the others.
+    private func loadRitualBreakConfigs(accessToken: String) async {
+        let targets = schedulers.compactMap { scheduler -> (UUID, String)? in
+            guard let coreRitualId = scheduler.coreRitualId else { return nil }
+            return (scheduler.id, coreRitualId)
+        }
+
+        for (localID, coreID) in targets {
+            guard let config = try? await coreApi.getRitualBreakConfig(
+                accessToken: accessToken,
+                ritualId: coreID
+            ) else { continue }
+
+            guard let index = schedulers.firstIndex(where: { $0.id == localID }) else { continue }
+            schedulers[index] = schedulers[index].withBreakConfig(
+                breakCount: config.breakCount,
+                breakDurationMinutes: config.breakDurationMinutes
+            )
+        }
+        persistSchedulers()
+    }
+
+    /// Same as `loadRitualBreakConfigs`, for modes.
+    private func loadModeBreakConfigs(accessToken: String) async {
+        let targets = modes.compactMap { mode -> (String, String)? in
+            guard let coreModeId = mode.coreModeId else { return nil }
+            return (mode.id, coreModeId)
+        }
+
+        for (localID, coreID) in targets {
+            guard let config = try? await coreApi.getModeBreakConfig(
+                accessToken: accessToken,
+                modeId: coreID
+            ) else { continue }
+
+            guard let index = modes.firstIndex(where: { $0.id == localID }) else { continue }
+            modes[index].breakCount = config.breakCount
+            modes[index].breakDurationMinutes = config.breakDurationMinutes
+        }
+        if let accountID = activeAccountID {
+            modeStore.save(modes, accountID: accountID)
+        }
+    }
+
+    /// Break config lives on its own endpoint (`/rituals/:id/breaks`), separate from
+    /// the ritual's own create/update — this best-effort-syncs it right after the
+    /// ritual itself synced, without failing the whole ritual sync if it errors.
+    private func syncRitualBreakConfig(
+        coreRitualID: String,
+        localSchedulerID: UUID,
+        accessToken: String
+    ) async {
+        guard let scheduler = schedulers.first(where: { $0.id == localSchedulerID }) else { return }
+        do {
+            _ = try await coreApi.saveRitualBreakConfig(
+                accessToken: accessToken,
+                ritualId: coreRitualID,
+                body: scheduler.breakConfigRequest()
+            )
+        } catch {
+            deviceActivityDebugStore.log(
+                "No se pudieron sincronizar los recreos de \(scheduler.title): \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private func syncModeBreakConfig(
+        coreModeID: String,
+        localModeID: String,
+        accessToken: String
+    ) async {
+        guard let mode = modes.first(where: { $0.id == localModeID }) else { return }
+        do {
+            _ = try await coreApi.saveModeBreakConfig(
+                accessToken: accessToken,
+                modeId: coreModeID,
+                body: mode.breakConfigRequest()
+            )
+        } catch {
+            deviceActivityDebugStore.log(
+                "No se pudieron sincronizar los recreos de \(mode.title): \(error.localizedDescription)"
+            )
+        }
     }
 
     private func syncPendingRitualDeletions(
@@ -1607,7 +1871,25 @@ final class BlockSetupViewModel: ObservableObject {
         return modeBreakUntil > .now
     }
 
-    func startModeBreak(minutes: Int = 5) {
+    var isRitualBreakActive: Bool {
+        guard let ritualBreakUntil else { return false }
+        return ritualBreakUntil > .now
+    }
+
+    /// Breaks remaining for the currently-active mode (0 if no mode is active, or
+    /// no breaks are configured for it).
+    var modeBreakUsesRemaining: Int {
+        guard let mode = currentBlockingMode else { return 0 }
+        return max(0, mode.breakCount - modeBreakUsedCount)
+    }
+
+    /// Same as `modeBreakUsesRemaining`, for the currently-active ritual.
+    var ritualBreakUsesRemaining: Int {
+        guard let scheduler = currentBlockingScheduler else { return 0 }
+        return max(0, scheduler.breakCount - ritualBreakUsedCount)
+    }
+
+    func startModeBreak() {
         guard let mode = currentBlockingMode else {
             modeMessage = "No hay un modo activo para pausar."
             return
@@ -1618,11 +1900,12 @@ final class BlockSetupViewModel: ObservableObject {
             return
         }
 
-        guard !hasUsedModeBreakInCurrentSession else {
-            modeMessage = "Ya usaste el recreo de este modo. Para tener otro, terminá el modo y volvé a iniciarlo."
+        guard modeBreakUsesRemaining > 0 else {
+            modeMessage = "Ya usaste todos los recreos de este modo. Para tener más, terminá el modo y volvé a iniciarlo."
             return
         }
 
+        let minutes = mode.breakDurationMinutes
         let breakUntil = Calendar.current.date(
             byAdding: .minute,
             value: minutes,
@@ -1649,6 +1932,51 @@ final class BlockSetupViewModel: ObservableObject {
         modeMessage = "Recreo de \(minutes) minutos iniciado."
         deviceActivityDebugStore.log("Recreo de modo iniciado para \(mode.title) hasta \(breakUntil).")
         scheduleModeBreakEnd(for: mode, until: breakUntil)
+    }
+
+    func startRitualBreak() {
+        guard let scheduler = currentBlockingScheduler else {
+            schedulerMessage = "No hay un ritual activo para pausar."
+            return
+        }
+
+        guard !isRitualBreakActive else {
+            schedulerMessage = "Ya tenés un recreo activo."
+            return
+        }
+
+        guard ritualBreakUsesRemaining > 0 else {
+            schedulerMessage = "Ya usaste todos los recreos de este ritual. Para tener más, terminalo y volvé a iniciarlo."
+            return
+        }
+
+        let minutes = scheduler.breakDurationMinutes
+        let breakUntil = Calendar.current.date(
+            byAdding: .minute,
+            value: minutes,
+            to: .now
+        ) ?? Date().addingTimeInterval(TimeInterval(minutes * 60))
+
+        markRitualBreakUsed(for: scheduler)
+        ritualBreakUntil = breakUntil
+        ritualBreakRemainingText = Self.formattedModeBreakRemaining(until: breakUntil)
+        defaults.set(breakUntil, forKey: ritualBreakUntilKey)
+        clearActiveShield()
+        reconcileSafariContentBlocking()
+        notificationService.sendRitualBreakStartedNotification(for: scheduler, minutes: minutes)
+        do {
+            try ritualBreakActivityScheduler.scheduleBreakEnd(
+                for: scheduler,
+                accountID: activeAccountID,
+                until: breakUntil
+            )
+        } catch {
+            deviceActivityDebugStore.log("No se pudo programar DeviceActivity para fin de recreo de ritual: \(error.localizedDescription).")
+        }
+        blockMessage = "Recreo activo en \(scheduler.title). Las restricciones vuelven en \(minutes) minutos."
+        schedulerMessage = "Recreo de \(minutes) minutos iniciado."
+        deviceActivityDebugStore.log("Recreo de ritual iniciado para \(scheduler.title) hasta \(breakUntil).")
+        scheduleRitualBreakEnd(for: scheduler, until: breakUntil)
     }
 
     var appCount: Int {
@@ -2002,6 +2330,8 @@ final class BlockSetupViewModel: ObservableObject {
         isBlocking = true
         activeBlockSource = .manual
         reconcileInteractiveStrictModeRestriction()
+        clearRitualBreakState()
+        resetRitualBreakUsage()
         blockedUntil = plannedEnd
         updateRemainingTime()
         startCountdownTimer()
@@ -2170,7 +2500,7 @@ final class BlockSetupViewModel: ObservableObject {
                     self.defaults.set(scanResult.identifier, forKey: self.registeredTagKey)
                     self.tagMessage = "Tag registrado: \(scanResult.identifier)."
                 case .failure(let error):
-                    self.tagMessage = error.localizedDescription
+                    self.handleTagReaderFailure(error) { [weak self] in self?.registerTag() }
                 }
             }
         }
@@ -2224,7 +2554,9 @@ final class BlockSetupViewModel: ObservableObject {
                         self.tagMessage = error.localizedDescription
                     }
                 case .failure(let error):
-                    self.tagMessage = error.localizedDescription
+                    self.handleTagReaderFailure(error) { [weak self] in
+                        self?.claimTag(accessToken: accessToken, preferredLabel: preferredLabel, isReplacement: isReplacement)
+                    }
                 }
             }
         }
@@ -2338,7 +2670,7 @@ final class BlockSetupViewModel: ObservableObject {
                     self.tagMessage = "Tag validado. Activando bloqueo."
                     await self.startTimedBlock()
                 case .failure(let error):
-                    self.tagMessage = error.localizedDescription
+                    self.handleTagReaderFailure(error) { [weak self] in self?.startBlockWithTag() }
                 }
             }
         }
@@ -2383,7 +2715,7 @@ final class BlockSetupViewModel: ObservableObject {
                         tagIdentifier: scanResult.identifier
                     )
                 case .failure(let error):
-                    self.tagMessage = error.localizedDescription
+                    self.handleTagReaderFailure(error) { [weak self] in self?.endBlockWithTag() }
                 }
             }
         }
@@ -2448,7 +2780,9 @@ final class BlockSetupViewModel: ObservableObject {
                         self.deviceActivityDebugStore.log("Error verify NFC: \(error.localizedDescription)")
                     }
                 case .failure(let error):
-                    self.tagMessage = error.localizedDescription
+                    self.handleTagReaderFailure(error) { [weak self] in
+                        self?.endBlockWithVerifiedTag(accessToken: accessToken)
+                    }
                 }
             }
         }
@@ -2509,10 +2843,41 @@ final class BlockSetupViewModel: ObservableObject {
                         self.deviceActivityDebugStore.log("Error verify NFC sensitive action: \(error.localizedDescription)")
                     }
                 case .failure(let error):
-                    self.tagMessage = error.localizedDescription
+                    self.handleTagReaderFailure(error) { [weak self] in
+                        self?.validateTagForSensitiveAction(
+                            accessToken: accessToken,
+                            actionDescription: actionDescription,
+                            alertMessage: alertMessage,
+                            onVerified: onVerified
+                        )
+                    }
                 }
             }
         }
+    }
+
+    /// Surfaces an NFC reader-session failure: always updates the inline status text,
+    /// and additionally pops a modal (with a retry action) for failures the user should
+    /// actually notice, as opposed to them simply canceling the system NFC sheet.
+    private func handleTagReaderFailure(_ error: Error, retry: (() -> Void)? = nil) {
+        tagMessage = error.localizedDescription
+
+        if let nfcError = error as? NFCTagReaderError, nfcError.shouldPresentAlert {
+            nfcErrorAlertMessage = nfcError.errorDescription
+            nfcErrorRetryAction = retry
+        }
+    }
+
+    func retryLastNfcAction() {
+        let retry = nfcErrorRetryAction
+        nfcErrorAlertMessage = nil
+        nfcErrorRetryAction = nil
+        retry?()
+    }
+
+    func dismissNfcErrorAlert() {
+        nfcErrorAlertMessage = nil
+        nfcErrorRetryAction = nil
     }
 
     private func beginTagInteraction(
@@ -2694,6 +3059,8 @@ final class BlockSetupViewModel: ObservableObject {
             deviceActivityDebugStore.log("Modo manual \(mode.title) finalizado con \(endSource).")
         } else {
             clearActiveShield()
+            clearRitualBreakState()
+            resetRitualBreakUsage()
             notificationService.sendRitualStoppedNotification(for: scheduler, endSource: endSource)
         }
 
@@ -2746,6 +3113,8 @@ final class BlockSetupViewModel: ObservableObject {
         strictModeEnabled: Bool = false,
         blockAppInstallation: Bool = false,
         blockAdultContent: Bool = false,
+        breakCount: Int = 0,
+        breakDurationMinutes: Int = 5,
         password: String? = nil
     ) -> Bool {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2800,7 +3169,9 @@ final class BlockSetupViewModel: ObservableObject {
             nfcUnlockEnabled: nfcUnlockEnabled,
             strictModeEnabled: strictModeEnabled,
             blockAppInstallation: blockAppInstallation,
-            blockAdultContent: blockAdultContent
+            blockAdultContent: blockAdultContent,
+            breakCount: breakCount,
+            breakDurationMinutes: breakDurationMinutes
         )
 
         if isProtected {
@@ -2823,6 +3194,145 @@ final class BlockSetupViewModel: ObservableObject {
         refreshScheduledRitualState()
         schedulerMessage = "Guardaste \(scheduler.title) con \(scheduler.selectionDigest)."
         return true
+    }
+
+    /// Edits an existing ritual: schedule, weekdays, protection, and (via `selection`,
+    /// same as `saveScheduler`) the blocked apps/categories/domains. Protected rituals
+    /// (currently or as a result of this edit) require `password` — core-api rejects
+    /// any edit to a protected ritual without it, even if protection itself isn't changing.
+    func updateScheduler(
+        _ existing: RitualScheduler,
+        title: String,
+        startHour: Int,
+        startMinute: Int,
+        endHour: Int,
+        endMinute: Int,
+        weekdays: [Int],
+        isProtected: Bool = false,
+        nfcUnlockEnabled: Bool = false,
+        strictModeEnabled: Bool = false,
+        blockAppInstallation: Bool = false,
+        blockAdultContent: Bool = false,
+        breakCount: Int? = nil,
+        breakDurationMinutes: Int? = nil,
+        password: String? = nil
+    ) -> Bool {
+        guard let index = schedulers.firstIndex(where: { $0.id == existing.id }) else {
+            schedulerMessage = "No encontré ese ritual."
+            return false
+        }
+
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !cleanTitle.isEmpty else {
+            schedulerMessage = "Ponle un nombre al scheduler antes de guardarlo."
+            return false
+        }
+
+        guard !selectionIsEmpty else {
+            schedulerMessage = "Primero elige apps, categorias o sitios para este scheduler."
+            return false
+        }
+
+        guard !weekdays.isEmpty else {
+            schedulerMessage = "Elige al menos un dia para activar el scheduler."
+            return false
+        }
+
+        guard activeAccountID != nil else {
+            schedulerMessage = "Inicia sesión nuevamente antes de guardar el ritual."
+            return false
+        }
+
+        let startTotal = startHour * 60 + startMinute
+        let endTotal = endHour * 60 + endMinute
+
+        guard endTotal != startTotal else {
+            schedulerMessage = "La hora de fin tiene que ser distinta a la de inicio."
+            return false
+        }
+
+        let cleanPassword = password?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let needsPassword = existing.isProtected || isProtected
+
+        guard !needsPassword || !cleanPassword.isEmpty else {
+            schedulerMessage = "Ingresá la contraseña del ritual para guardar los cambios."
+            return false
+        }
+
+        if isProtected && !(4 ... 72).contains(cleanPassword.count) {
+            schedulerMessage = "La contraseña debe tener entre 4 y 72 caracteres."
+            return false
+        }
+
+        let updated = RitualScheduler(
+            id: existing.id,
+            coreRitualId: existing.coreRitualId,
+            title: cleanTitle,
+            detail: "Ritual guardado con \(RitualScheduler.selectionDigest(for: selection)).",
+            focusTarget: existing.focusTarget,
+            symbolName: existing.symbolName,
+            startHour: startHour,
+            startMinute: startMinute,
+            endHour: endHour,
+            endMinute: endMinute,
+            weekdays: weekdays.sorted(),
+            selection: selection,
+            isProtected: isProtected,
+            nfcUnlockEnabled: nfcUnlockEnabled,
+            strictModeEnabled: strictModeEnabled,
+            blockAppInstallation: blockAppInstallation,
+            blockAdultContent: blockAdultContent,
+            breakCount: breakCount ?? existing.breakCount,
+            breakDurationMinutes: breakDurationMinutes ?? existing.breakDurationMinutes
+        )
+
+        if needsPassword {
+            pendingRitualPasswords[updated.id] = cleanPassword
+        }
+
+        do {
+            if let coreRitualID = existing.coreRitualId {
+                try queueRitualUpdate(
+                    updated,
+                    coreRitualID: coreRitualID,
+                    password: needsPassword ? cleanPassword : nil
+                )
+            } else {
+                // Never synced to core-api yet — still just overwrite the pending create.
+                try queueRitualConfiguration(
+                    updated,
+                    password: isProtected ? cleanPassword : nil
+                )
+            }
+        } catch {
+            if existing.coreRitualId != nil {
+                removeQueuedRitualUpdate(updated)
+            } else {
+                removeQueuedRitualConfiguration(updated)
+            }
+            schedulerMessage = "No se pudieron guardar los cambios: \(error.localizedDescription)"
+            return false
+        }
+
+        schedulers[index] = updated
+        persistSchedulers()
+        rescheduleDeviceActivities()
+        refreshScheduledRitualState()
+        schedulerMessage = "Guardaste los cambios de \(updated.title)."
+        return true
+    }
+
+    func syncLatestSchedulerUpdateToCore(accessToken: String) async {
+        guard !accessToken.isEmpty else { return }
+        isSyncingRituals = true
+        coreSyncMessage = nil
+        defer { isSyncingRituals = false }
+
+        await syncPendingConfigurationOperations(accessToken: accessToken)
+        coreSyncMessage = failedSyncCount > 0
+            ? "Los cambios quedaron pendientes de sincronización."
+            : "Ritual sincronizado con core-api."
     }
 
     func updateSchedulerProtection(
@@ -2884,6 +3394,7 @@ final class BlockSetupViewModel: ObservableObject {
             mergeCoreRituals(rituals)
             applyRitualDeletionTombstones(userID: accountID)
             await syncPendingSchedulersToCore(accessToken: accessToken)
+            await loadRitualBreakConfigs(accessToken: accessToken)
             await loadRitualSessionHistories(accessToken: accessToken)
             coreSyncMessage = schedulers.isEmpty ? "Todavia no hay rituales sincronizados." : "Rituales sincronizados."
         } catch {
@@ -3001,6 +3512,7 @@ final class BlockSetupViewModel: ObservableObject {
             let coreModes = try await coreApi.listModes(accessToken: accessToken)
             mergeCoreModes(coreModes)
             await syncPendingModesToCore(accessToken: accessToken)
+            await loadModeBreakConfigs(accessToken: accessToken)
             await loadModeSessionHistories(accessToken: accessToken)
             modeMessage = modes.isEmpty ? "Todavia no hay modos sincronizados." : "Modos sincronizados."
         } catch {
@@ -3014,6 +3526,8 @@ final class BlockSetupViewModel: ObservableObject {
         title: String,
         isProtected: Bool,
         password: String?,
+        breakCount: Int? = nil,
+        breakDurationMinutes: Int? = nil,
         accessToken: String?
     ) async -> Bool {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -3047,6 +3561,12 @@ final class BlockSetupViewModel: ObservableObject {
         modes[index].title = cleanTitle
         modes[index].isProtected = isProtected
         modes[index].nfcUnlockEnabled = isProtected
+        if let breakCount {
+            modes[index].breakCount = breakCount
+        }
+        if let breakDurationMinutes {
+            modes[index].breakDurationMinutes = breakDurationMinutes
+        }
 
         if isProtected && !cleanPassword.isEmpty {
             pendingModePasswords[mode.id] = cleanPassword
@@ -3069,6 +3589,8 @@ final class BlockSetupViewModel: ObservableObject {
                 let localStrictModeEnabled = modes[index].strictModeEnabled
                 let localBlockAppInstallation = modes[index].blockAppInstallation
                 let localBlockAdultContent = modes[index].blockAdultContent
+                let localBreakCount = modes[index].breakCount
+                let localBreakDurationMinutes = modes[index].breakDurationMinutes
                 modes[index] = FocusMode(
                     response: response,
                     preserving: localSelection
@@ -3076,9 +3598,12 @@ final class BlockSetupViewModel: ObservableObject {
                 modes[index].strictModeEnabled = localStrictModeEnabled
                 modes[index].blockAppInstallation = localBlockAppInstallation
                 modes[index].blockAdultContent = localBlockAdultContent
+                modes[index].breakCount = localBreakCount
+                modes[index].breakDurationMinutes = localBreakDurationMinutes
                 if let accountID = activeAccountID {
                     modeStore.save(modes, accountID: accountID)
                 }
+                await syncModeBreakConfig(coreModeID: coreModeId, localModeID: mode.id, accessToken: accessToken)
                 modeMessage = "Modo \(modes[index].title) sincronizado."
                 return true
             } catch {
@@ -3131,7 +3656,7 @@ final class BlockSetupViewModel: ObservableObject {
         }
     }
 
-    func updateModeActivationOptions(_ configuredMode: FocusMode) {
+    func updateModeActivationOptions(_ configuredMode: FocusMode, accessToken: String? = nil) {
         guard let index = modes.firstIndex(where: {
             $0.id == configuredMode.id
         }) else {
@@ -3141,9 +3666,26 @@ final class BlockSetupViewModel: ObservableObject {
         modes[index].strictModeEnabled = configuredMode.strictModeEnabled
         modes[index].blockAppInstallation = configuredMode.blockAppInstallation
         modes[index].blockAdultContent = configuredMode.blockAdultContent
+        let breakConfigChanged = modes[index].breakCount != configuredMode.breakCount
+            || modes[index].breakDurationMinutes != configuredMode.breakDurationMinutes
+        modes[index].breakCount = configuredMode.breakCount
+        modes[index].breakDurationMinutes = configuredMode.breakDurationMinutes
 
         if let accountID = activeAccountID {
             modeStore.save(modes, accountID: accountID)
+        }
+
+        if breakConfigChanged,
+           let accessToken, !accessToken.isEmpty,
+           let coreModeId = modes[index].coreModeId {
+            let localModeID = modes[index].id
+            Task {
+                await syncModeBreakConfig(
+                    coreModeID: coreModeId,
+                    localModeID: localModeID,
+                    accessToken: accessToken
+                )
+            }
         }
     }
 
@@ -3294,7 +3836,9 @@ final class BlockSetupViewModel: ObservableObject {
                         nfcUnlockEnabled: localMode.nfcUnlockEnabled,
                         strictModeEnabled: localMode.strictModeEnabled,
                         blockAppInstallation: localMode.blockAppInstallation,
-                        blockAdultContent: localMode.blockAdultContent
+                        blockAdultContent: localMode.blockAdultContent,
+                        breakCount: localMode.breakCount,
+                        breakDurationMinutes: localMode.breakDurationMinutes
                     )
                 )
             } else {
@@ -3302,6 +3846,8 @@ final class BlockSetupViewModel: ObservableObject {
                 mergedMode.strictModeEnabled = localMode?.strictModeEnabled ?? false
                 mergedMode.blockAppInstallation = localMode?.blockAppInstallation ?? false
                 mergedMode.blockAdultContent = localMode?.blockAdultContent ?? false
+                mergedMode.breakCount = localMode?.breakCount ?? 0
+                mergedMode.breakDurationMinutes = localMode?.breakDurationMinutes ?? mergedMode.breakDurationMinutes
                 nextModes.append(mergedMode)
             }
         }
@@ -3386,7 +3932,9 @@ final class BlockSetupViewModel: ObservableObject {
                     nfcUnlockEnabled: ritual.nfcUnlockEnabled,
                     strictModeEnabled: localScheduler.strictModeEnabled,
                     blockAppInstallation: localScheduler.blockAppInstallation,
-                    blockAdultContent: localScheduler.blockAdultContent
+                    blockAdultContent: localScheduler.blockAdultContent,
+                    breakCount: localScheduler.breakCount,
+                    breakDurationMinutes: localScheduler.breakDurationMinutes
                 )
             } else if let index = schedulers.firstIndex(where: { scheduler in
                 scheduler.coreRitualId == nil &&
@@ -3413,7 +3961,9 @@ final class BlockSetupViewModel: ObservableObject {
                     nfcUnlockEnabled: syncedScheduler.nfcUnlockEnabled,
                     strictModeEnabled: localScheduler.strictModeEnabled,
                     blockAppInstallation: localScheduler.blockAppInstallation,
-                    blockAdultContent: localScheduler.blockAdultContent
+                    blockAdultContent: localScheduler.blockAdultContent,
+                    breakCount: localScheduler.breakCount,
+                    breakDurationMinutes: localScheduler.breakDurationMinutes
                 )
             } else {
                 schedulers.append(RitualScheduler(response: ritual))
@@ -3530,6 +4080,7 @@ final class BlockSetupViewModel: ObservableObject {
     }
 
     func refreshScheduledRitualState() {
+        defer { hasReconciledBreakState = true }
         refreshDeviceActivityDebugEvents()
         removeExpiredScheduledSuppressions()
         guard isAuthorized else { return }
@@ -3560,11 +4111,23 @@ final class BlockSetupViewModel: ObservableObject {
             }
 
             selectScheduler(scheduler)
-            applyShield(
-                using: scheduler.selection,
-                blockAppInstallation: scheduler.blockAppInstallation,
-                blockAdultContent: scheduler.blockAdultContent
-            )
+            // Restore (not reset) break usage: this fallback can be "rediscovering" a
+            // ritual that was already running (with breaks already used) before the app
+            // was closed, not just a brand-new activation. `restoreRitualBreakUsage`
+            // correctly yields 0 for a genuinely fresh activation either way, since
+            // `endBlock` clears the persisted count once a ritual actually finishes.
+            restoreRitualBreakUsage(for: scheduler)
+            if isRitualBreakActive, let ritualBreakUntil {
+                clearActiveShield()
+                scheduleRitualBreakEnd(for: scheduler, until: ritualBreakUntil)
+            } else {
+                clearRitualBreakState()
+                applyShield(
+                    using: scheduler.selection,
+                    blockAppInstallation: scheduler.blockAppInstallation,
+                    blockAdultContent: scheduler.blockAdultContent
+                )
+            }
             deviceActivityDebugStore.log("Fallback app activo \(scheduler.title) items=\(scheduler.selectedItemCount).")
             isBlocking = true
             activeBlockSource = .scheduled(scheduler.id)
@@ -3710,6 +4273,7 @@ final class BlockSetupViewModel: ObservableObject {
     }
 
     private func restoreActiveModeIfNeeded(accountID: String) {
+        defer { hasReconciledBreakState = true }
         guard let record = modeStore.loadActiveMode(),
               record.accountID == accountID,
               let mode = modes.first(where: { $0.id == record.modeID }),
@@ -3814,11 +4378,18 @@ final class BlockSetupViewModel: ObservableObject {
         }
         selectedSchedulerID = scheduler.id
         selection = scheduler.selection
-        applyShield(
-            using: scheduler.selection,
-            blockAppInstallation: scheduler.blockAppInstallation,
-            blockAdultContent: scheduler.blockAdultContent
-        )
+        restoreRitualBreakUsage(for: scheduler)
+        if isRitualBreakActive, let ritualBreakUntil {
+            clearActiveShield()
+            scheduleRitualBreakEnd(for: scheduler, until: ritualBreakUntil)
+        } else {
+            clearRitualBreakState()
+            applyShield(
+                using: scheduler.selection,
+                blockAppInstallation: scheduler.blockAppInstallation,
+                blockAdultContent: scheduler.blockAdultContent
+            )
+        }
         isBlocking = true
         activeBlockSource = session.startSource == "schedule"
             ? .scheduled(scheduler.id)
@@ -4359,22 +4930,22 @@ final class BlockSetupViewModel: ObservableObject {
     }
 
     private func markModeBreakUsed(for mode: FocusMode) {
-        hasUsedModeBreakInCurrentSession = true
+        modeBreakUsedCount += 1
         defaults.set(mode.id, forKey: modeBreakUsedModeIDKey)
+        defaults.set(modeBreakUsedCount, forKey: modeBreakUsedCountKey)
     }
 
     private func resetModeBreakUsage() {
-        hasUsedModeBreakInCurrentSession = false
+        modeBreakUsedCount = 0
         defaults.removeObject(forKey: modeBreakUsedModeIDKey)
+        defaults.removeObject(forKey: modeBreakUsedCountKey)
     }
 
     private func restoreModeBreakUsage(for mode: FocusMode) {
         let usedModeID = defaults.string(forKey: modeBreakUsedModeIDKey)
-        if usedModeID == mode.id || isModeBreakActive {
-            markModeBreakUsed(for: mode)
-        } else {
-            hasUsedModeBreakInCurrentSession = false
-        }
+        modeBreakUsedCount = usedModeID == mode.id
+            ? defaults.integer(forKey: modeBreakUsedCountKey)
+            : 0
     }
 
     private func updateModeBreakRemainingText(until breakUntil: Date) {
@@ -4386,6 +4957,88 @@ final class BlockSetupViewModel: ObservableObject {
         let minutes = remaining / 60
         let seconds = remaining % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    // MARK: - Ritual break (mirrors the mode break machinery above)
+
+    private func scheduleRitualBreakEnd(for scheduler: RitualScheduler, until breakUntil: Date) {
+        ritualBreakTask?.cancel()
+        ritualBreakRemainingText = Self.formattedModeBreakRemaining(until: breakUntil)
+
+        ritualBreakTask = Task { [weak self] in
+            while !Task.isCancelled {
+                let remaining = breakUntil.timeIntervalSinceNow
+                if remaining <= 0 { break }
+
+                await MainActor.run {
+                    self?.ritualBreakRemainingText = Self.formattedModeBreakRemaining(until: breakUntil)
+                }
+
+                try? await Task.sleep(for: .seconds(1))
+            }
+
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self?.finishRitualBreak(for: scheduler)
+            }
+        }
+    }
+
+    private func finishRitualBreak(for scheduler: RitualScheduler) {
+        guard currentBlockingScheduler?.id == scheduler.id else {
+            clearRitualBreakState(cancelNotificationsFor: scheduler)
+            return
+        }
+
+        clearRitualBreakState(cancelNotificationsFor: nil, cancelActivity: false)
+        applyShield(
+            using: scheduler.selection,
+            blockAppInstallation: scheduler.blockAppInstallation,
+            blockAdultContent: scheduler.blockAdultContent
+        )
+        blockMessage = "Recreo terminado. Ritual \(scheduler.title) activo otra vez."
+        schedulerMessage = nil
+        deviceActivityDebugStore.log("Recreo de ritual terminado para \(scheduler.title).")
+    }
+
+    private func clearRitualBreakState() {
+        clearRitualBreakState(cancelNotificationsFor: currentBlockingScheduler)
+    }
+
+    private func clearRitualBreakState(
+        cancelNotificationsFor scheduler: RitualScheduler?,
+        cancelActivity: Bool = true
+    ) {
+        ritualBreakTask?.cancel()
+        ritualBreakTask = nil
+        if cancelActivity {
+            ritualBreakActivityScheduler.cancelCurrent()
+        }
+        if let scheduler {
+            notificationService.cancelRitualBreakNotifications(for: scheduler)
+        }
+        ritualBreakUntil = nil
+        ritualBreakRemainingText = nil
+        defaults.removeObject(forKey: ritualBreakUntilKey)
+    }
+
+    private func markRitualBreakUsed(for scheduler: RitualScheduler) {
+        ritualBreakUsedCount += 1
+        defaults.set(scheduler.id.uuidString, forKey: ritualBreakUsedSchedulerIDKey)
+        defaults.set(ritualBreakUsedCount, forKey: ritualBreakUsedCountKey)
+    }
+
+    private func resetRitualBreakUsage() {
+        ritualBreakUsedCount = 0
+        defaults.removeObject(forKey: ritualBreakUsedSchedulerIDKey)
+        defaults.removeObject(forKey: ritualBreakUsedCountKey)
+    }
+
+    private func restoreRitualBreakUsage(for scheduler: RitualScheduler) {
+        let usedSchedulerID = defaults.string(forKey: ritualBreakUsedSchedulerIDKey)
+        ritualBreakUsedCount = usedSchedulerID == scheduler.id.uuidString
+            ? defaults.integer(forKey: ritualBreakUsedCountKey)
+            : 0
     }
 
     private func queueCoreSessionFinish(
@@ -4912,7 +5565,9 @@ final class BlockSetupViewModel: ObservableObject {
             nfcUnlockEnabled: response.nfcUnlockEnabled,
             strictModeEnabled: scheduler.strictModeEnabled,
             blockAppInstallation: scheduler.blockAppInstallation,
-            blockAdultContent: scheduler.blockAdultContent
+            blockAdultContent: scheduler.blockAdultContent,
+            breakCount: scheduler.breakCount,
+            breakDurationMinutes: scheduler.breakDurationMinutes
         )
         persistSchedulers()
         rescheduleDeviceActivities()
@@ -4964,6 +5619,27 @@ private extension UpdateModeRequest {
 private extension CreateRitualRequest {
     func withPassword(_ password: String?) -> CreateRitualRequest {
         CreateRitualRequest(
+            title: title,
+            description: description,
+            icon: icon,
+            durationMinutes: durationMinutes,
+            weekdays: weekdays,
+            startTime: startTime,
+            endTime: endTime,
+            appCount: appCount,
+            categoryCount: categoryCount,
+            domainCount: domainCount,
+            selectionDigest: selectionDigest,
+            isProtected: isProtected,
+            nfcUnlockEnabled: nfcUnlockEnabled,
+            password: isProtected ? password : nil
+        )
+    }
+}
+
+private extension UpdateRitualRequest {
+    func withPassword(_ password: String?) -> UpdateRitualRequest {
+        UpdateRitualRequest(
             title: title,
             description: description,
             icon: icon,

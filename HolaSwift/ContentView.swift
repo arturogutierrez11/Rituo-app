@@ -153,6 +153,31 @@ struct RituoRootView: View {
                 )
             }
         }
+        .sheet(
+            isPresented: Binding(
+                get: { blockViewModel.nfcErrorAlertMessage != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        blockViewModel.dismissNfcErrorAlert()
+                    }
+                }
+            )
+        ) {
+            RituoBottomActionSheet(
+                symbol: "wave.3.right.circle",
+                tint: RituoPalette.danger,
+                title: "No se pudo leer el NFC",
+                message: blockViewModel.nfcErrorAlertMessage ?? "",
+                actions: [
+                    RituoBottomSheetAction(title: "Reintentar", symbol: "arrow.clockwise") {
+                        blockViewModel.retryLastNfcAction()
+                    },
+                    RituoBottomSheetAction(title: "Cancelar", style: .secondary) {
+                        blockViewModel.dismissNfcErrorAlert()
+                    }
+                ]
+            )
+        }
         .sheet(isPresented: $isNfcRequiredSheetPresented) {
             RituoBottomActionSheet(
                 symbol: "wave.3.right",

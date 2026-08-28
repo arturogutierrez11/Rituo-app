@@ -40,7 +40,9 @@ final class ModeStore {
                 nfcUnlockEnabled: savedMode.nfcUnlockEnabled,
                 strictModeEnabled: savedMode.strictModeEnabled,
                 blockAppInstallation: savedMode.blockAppInstallation,
-                blockAdultContent: savedMode.blockAdultContent
+                blockAdultContent: savedMode.blockAdultContent,
+                breakCount: savedMode.breakCount,
+                breakDurationMinutes: savedMode.breakDurationMinutes
             )
         }
 

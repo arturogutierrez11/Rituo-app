@@ -91,7 +91,7 @@ struct RitualDashboardPage: View {
         }
         .sheet(item: $pendingStartMode) { mode in
             ModeConfirmStartSheet(mode: mode) { configuredMode, durationMinutes in
-                viewModel.updateModeActivationOptions(configuredMode)
+                viewModel.updateModeActivationOptions(configuredMode, accessToken: accessToken)
                 Task {
                     _ = await viewModel.startMode(
                         configuredMode,
@@ -198,36 +198,56 @@ struct RitualDashboardPage: View {
 
             Spacer(minLength: 0)
 
-            if mode != nil {
-                Button {
-                    viewModel.startModeBreak(minutes: 5)
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: modeBreakButtonIcon)
-                            .font(.system(size: 15, weight: .semibold))
-                        Text(modeBreakButtonTitle)
-                            .font(.custom("Helvetica", size: 15).weight(.bold))
-                        if let remaining = viewModel.modeBreakRemainingText,
-                           viewModel.isModeBreakActive {
-                            Text(remaining)
-                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                                .opacity(0.64)
-                        }
-                    }
-                    .foregroundStyle(RituoPalette.white)
-                    .frame(maxWidth: .infinity, minHeight: 52)
-                    .background(
-                        Capsule()
-                            .fill(RituoPalette.white.opacity(0.10))
-                            .overlay {
-                                Capsule()
-                                    .stroke(RituoPalette.white.opacity(0.12), lineWidth: 1)
+            if breakCount(mode: mode, scheduler: scheduler) > 0 {
+                Group {
+                    if viewModel.hasReconciledBreakState {
+                        Button {
+                            if mode != nil {
+                                viewModel.startModeBreak()
+                            } else {
+                                viewModel.startRitualBreak()
                             }
-                    )
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: breakButtonIcon(mode: mode, scheduler: scheduler))
+                                    .font(.system(size: 15, weight: .semibold))
+                                Text(breakButtonTitle(mode: mode, scheduler: scheduler))
+                                    .font(.custom("Helvetica", size: 15).weight(.bold))
+                                if let remaining = mode != nil ? viewModel.modeBreakRemainingText : viewModel.ritualBreakRemainingText,
+                                   isBreakActive(mode: mode, scheduler: scheduler) {
+                                    Text(remaining)
+                                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                        .opacity(0.64)
+                                }
+                            }
+                            .foregroundStyle(RituoPalette.white)
+                            .frame(maxWidth: .infinity, minHeight: 52)
+                            .background(
+                                Capsule()
+                                    .fill(RituoPalette.white.opacity(0.10))
+                                    .overlay {
+                                        Capsule()
+                                            .stroke(RituoPalette.white.opacity(0.12), lineWidth: 1)
+                                    }
+                            )
+                        }
+                        .buttonStyle(LoginPressButtonStyle())
+                        .disabled(
+                            isBreakActive(mode: mode, scheduler: scheduler)
+                                || breakUsesRemaining(mode: mode, scheduler: scheduler) <= 0
+                        )
+                        .opacity(
+                            !isBreakActive(mode: mode, scheduler: scheduler)
+                                && breakUsesRemaining(mode: mode, scheduler: scheduler) <= 0
+                                ? 0.58 : 1
+                        )
+                        .transition(.opacity)
+                    } else {
+                        BreakButtonLoadingPlaceholder()
+                            .transition(.opacity)
+                    }
                 }
-                .buttonStyle(LoginPressButtonStyle())
-                .disabled(viewModel.isModeBreakActive || viewModel.hasUsedModeBreakInCurrentSession)
-                .opacity(viewModel.hasUsedModeBreakInCurrentSession && !viewModel.isModeBreakActive ? 0.58 : 1)
+                .animation(.easeInOut(duration: 0.25), value: viewModel.hasReconciledBreakState)
                 .padding(.horizontal, 24)
                 .padding(.bottom, 10)
             }
@@ -269,8 +289,29 @@ struct RitualDashboardPage: View {
 
     // MARK: - Computed
 
+    /// The ritual whose next scheduled occurrence (by weekday + start time) is soonest —
+    /// not simply the first one in `schedulers`, which is ordered most-recently-created-first.
     private var nextRitual: RitualScheduler? {
-        viewModel.schedulers.first { !$0.isActive() }
+        let calendar = Calendar.current
+        let now = Date.now
+
+        return viewModel.schedulers
+            .filter { $0.selectedItemCount > 0 && !$0.weekdays.isEmpty }
+            .compactMap { scheduler -> (scheduler: RitualScheduler, nextStart: Date)? in
+                let nextStart = scheduler.weekdays.compactMap { weekday -> Date? in
+                    var components = DateComponents()
+                    components.weekday = weekday
+                    components.hour = scheduler.startHour
+                    components.minute = scheduler.startMinute
+                    components.second = 0
+                    return calendar.nextDate(after: now, matching: components, matchingPolicy: .nextTime)
+                }.min()
+
+                guard let nextStart else { return nil }
+                return (scheduler, nextStart)
+            }
+            .min { $0.nextStart < $1.nextStart }?
+            .scheduler
     }
 
     private var activeRemainingMinutes: Int {
@@ -285,24 +326,43 @@ struct RitualDashboardPage: View {
         return max(0, scheduler.durationMinutes - activeRemainingMinutes)
     }
 
-    private var modeBreakButtonTitle: String {
-        if viewModel.isModeBreakActive {
+    private func breakCount(mode: FocusMode?, scheduler: RitualScheduler?) -> Int {
+        mode?.breakCount ?? scheduler?.breakCount ?? 0
+    }
+
+    private func breakDurationMinutes(mode: FocusMode?, scheduler: RitualScheduler?) -> Int {
+        mode?.breakDurationMinutes ?? scheduler?.breakDurationMinutes ?? 5
+    }
+
+    private func isBreakActive(mode: FocusMode?, scheduler: RitualScheduler?) -> Bool {
+        mode != nil ? viewModel.isModeBreakActive : viewModel.isRitualBreakActive
+    }
+
+    private func breakUsesRemaining(mode: FocusMode?, scheduler: RitualScheduler?) -> Int {
+        mode != nil ? viewModel.modeBreakUsesRemaining : viewModel.ritualBreakUsesRemaining
+    }
+
+    private func breakButtonTitle(mode: FocusMode?, scheduler: RitualScheduler?) -> String {
+        if isBreakActive(mode: mode, scheduler: scheduler) {
             return "Recreo activo"
         }
 
-        if viewModel.hasUsedModeBreakInCurrentSession {
-            return "Recreo usado"
+        let remaining = breakUsesRemaining(mode: mode, scheduler: scheduler)
+        if remaining <= 0 {
+            return "Recreos usados"
         }
 
-        return "Recreo 5 min"
+        let total = breakCount(mode: mode, scheduler: scheduler)
+        let minutes = breakDurationMinutes(mode: mode, scheduler: scheduler)
+        return "Recreo \(minutes) min (\(remaining) de \(total))"
     }
 
-    private var modeBreakButtonIcon: String {
-        if viewModel.isModeBreakActive {
+    private func breakButtonIcon(mode: FocusMode?, scheduler: RitualScheduler?) -> String {
+        if isBreakActive(mode: mode, scheduler: scheduler) {
             return "pause.circle.fill"
         }
 
-        if viewModel.hasUsedModeBreakInCurrentSession {
+        if breakUsesRemaining(mode: mode, scheduler: scheduler) <= 0 {
             return "checkmark.circle.fill"
         }
 
@@ -577,19 +637,57 @@ private struct HomeStatCell: View {
 
 // MARK: - Next ritual banner
 
+// MARK: - Break button loading placeholder
+
+/// Shown in place of the break button for the brief moment right after the app
+/// becomes active, while it confirms locally how many breaks are actually left —
+/// same size/shape as the real button so nothing jumps when it swaps in.
+private struct BreakButtonLoadingPlaceholder: View {
+    @State private var pulses = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+                .tint(RituoPalette.lightBlue)
+                .scaleEffect(0.82)
+            Text("Verificando recreos…")
+                .font(.custom("Helvetica", size: 15).weight(.bold))
+                .foregroundStyle(RituoPalette.white.opacity(0.55))
+        }
+        .frame(maxWidth: .infinity, minHeight: 52)
+        .background(
+            Capsule()
+                .fill(RituoPalette.white.opacity(0.07))
+                .overlay {
+                    Capsule()
+                        .stroke(RituoPalette.lightBlue.opacity(pulses ? 0.38 : 0.12), lineWidth: 1)
+                }
+        )
+        .opacity(pulses ? 0.72 : 1)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                pulses = true
+            }
+        }
+    }
+}
+
 private struct NextRitualBanner: View {
     let scheduler: RitualScheduler
+    @State private var pulses = false
+    @State private var shimmerMoves = false
 
     var body: some View {
         HStack(spacing: 14) {
             ritualIcon
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 7) {
                 HStack(spacing: 6) {
                     Circle()
                         .fill(RituoPalette.lightBlue)
                         .frame(width: 5, height: 5)
-                        .shadow(color: RituoPalette.lightBlue.opacity(0.75), radius: 5)
+                        .scaleEffect(pulses ? 1.5 : 0.85)
+                        .shadow(color: RituoPalette.lightBlue.opacity(0.85), radius: pulses ? 7 : 4)
 
                     Text("PRÓXIMO RITUAL")
                         .font(.custom("Helvetica", size: 9).weight(.bold))
@@ -602,6 +700,14 @@ private struct NextRitualBanner: View {
                     .foregroundStyle(RituoPalette.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
+
+                if let countdown = countdownText {
+                    Text(countdown)
+                        .font(.custom("Helvetica", size: 13).weight(.bold))
+                        .foregroundStyle(RituoPalette.lightBlue)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                }
 
                 HStack(spacing: 6) {
                     Image(systemName: "clock")
@@ -616,7 +722,7 @@ private struct NextRitualBanner: View {
                         .minimumScaleFactor(0.78)
                 }
                 .font(.custom("Helvetica", size: 12).weight(.bold))
-                .foregroundStyle(RituoPalette.white.opacity(0.48))
+                .foregroundStyle(RituoPalette.white.opacity(0.40))
             }
 
             Spacer(minLength: 0)
@@ -635,26 +741,47 @@ private struct NextRitualBanner: View {
                 .stroke(
                     LinearGradient(
                         colors: [
+                            RituoPalette.lightBlue.opacity(shimmerMoves ? 0.55 : 0.16),
                             RituoPalette.white.opacity(0.22),
-                            RituoPalette.lightBlue.opacity(0.16),
-                            RituoPalette.white.opacity(0.06)
+                            RituoPalette.lightBlue.opacity(shimmerMoves ? 0.16 : 0.55)
                         ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                        startPoint: shimmerMoves ? .bottomTrailing : .topLeading,
+                        endPoint: shimmerMoves ? .topLeading : .bottomTrailing
                     ),
                     lineWidth: 1
                 )
         }
         .shadow(color: Color.black.opacity(0.24), radius: 18, x: 0, y: 10)
+        .shadow(color: RituoPalette.lightBlue.opacity(0.10), radius: 24, x: 0, y: 0)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true)) {
+                pulses = true
+            }
+            withAnimation(.easeInOut(duration: 3.2).repeatForever(autoreverses: true)) {
+                shimmerMoves = true
+            }
+        }
     }
 
     private var ritualIcon: some View {
         ZStack {
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [RituoPalette.lightBlue.opacity(0.32), Color.clear],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: 38
+                    )
+                )
+                .frame(width: 74, height: 74)
+                .blur(radius: 6)
+
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
-                            RituoPalette.lightBlue.opacity(0.28),
+                            RituoPalette.lightBlue.opacity(0.30),
                             RituoPalette.white.opacity(0.08)
                         ],
                         startPoint: .topLeading,
@@ -662,15 +789,42 @@ private struct NextRitualBanner: View {
                     )
                 )
                 .frame(width: 58, height: 58)
-
-            Circle()
-                .stroke(RituoPalette.white.opacity(0.12), lineWidth: 1)
-                .frame(width: 32, height: 32)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(RituoPalette.lightBlue.opacity(0.30), lineWidth: 1)
+                }
 
             Image(systemName: schedulerIcon)
                 .font(.system(size: 19, weight: .semibold))
-                .foregroundStyle(RituoPalette.white.opacity(0.82))
+                .foregroundStyle(RituoPalette.white.opacity(0.90))
+                .shadow(color: RituoPalette.lightBlue.opacity(0.5), radius: 6)
         }
+    }
+
+    private var countdownText: String? {
+        let calendar = Calendar.current
+        let now = Date.now
+
+        let nextDate = scheduler.weekdays.compactMap { weekday -> Date? in
+            var components = DateComponents()
+            components.weekday = weekday
+            components.hour = scheduler.startHour
+            components.minute = scheduler.startMinute
+            components.second = 0
+            return calendar.nextDate(after: now, matching: components, matchingPolicy: .nextTime)
+        }.min()
+
+        guard let nextDate else { return nil }
+        let totalMinutes = Int(nextDate.timeIntervalSince(now) / 60)
+        guard totalMinutes > 0 else { return nil }
+
+        let days = totalMinutes / (24 * 60)
+        let hours = (totalMinutes % (24 * 60)) / 60
+        let minutes = totalMinutes % 60
+
+        if days > 0 { return "Empieza en \(days) d \(hours) h" }
+        if hours > 0 { return "Empieza en \(hours) h \(minutes) min" }
+        return "Empieza en \(minutes) min"
     }
 
     private var bannerBackground: some View {
@@ -1416,6 +1570,8 @@ private struct ModeConfirmStartSheet: View {
     @State private var strictModeEnabled: Bool
     @State private var blockAppInstallation: Bool
     @State private var blockAdultContent: Bool
+    @State private var breakCount: Int
+    @State private var breakDurationMinutes: Int
     @State private var durationHalfHours = 0
     @State private var isDurationPickerPresented = false
 
@@ -1430,6 +1586,8 @@ private struct ModeConfirmStartSheet: View {
         _strictModeEnabled = State(initialValue: mode.strictModeEnabled)
         _blockAppInstallation = State(initialValue: mode.blockAppInstallation)
         _blockAdultContent = State(initialValue: mode.blockAdultContent)
+        _breakCount = State(initialValue: mode.breakCount)
+        _breakDurationMinutes = State(initialValue: mode.breakDurationMinutes)
     }
 
     private var blockingRuleCount: Int {
@@ -1444,7 +1602,7 @@ private struct ModeConfirmStartSheet: View {
     }
 
     private var durationValueText: String {
-        guard let minutes = selectedDurationMinutes else { return "∞" }
+        guard let minutes = selectedDurationMinutes else { return "Sin límite" }
         let hours = minutes / 60
         let remainder = minutes % 60
         if hours == 0 { return "\(remainder) min" }
@@ -1507,28 +1665,37 @@ private struct ModeConfirmStartSheet: View {
                     Button {
                         isDurationPickerPresented = true
                     } label: {
-                        VStack(spacing: 4) {
-                            Image(systemName: selectedDurationMinutes == nil ? "infinity" : "timer")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(
-                                    selectedDurationMinutes == nil
-                                        ? RituoPalette.white.opacity(0.35)
-                                        : mode.accentColor
-                                )
-                            Text(durationValueText)
-                                .font(.system(size: 18, weight: .bold, design: .rounded))
-                                .foregroundStyle(RituoPalette.white)
-                                .contentTransition(.numericText())
-                            HStack(spacing: 3) {
-                                Text(selectedDurationMinutes == nil ? "sin límite" : "límite")
-                                Image(systemName: "chevron.up.chevron.down")
-                                    .font(.system(size: 7, weight: .bold))
+                        VStack(spacing: 5) {
+                            Text("DURACIÓN")
+                                .font(.system(size: 9, weight: .bold))
+                                .tracking(0.5)
+                                .foregroundStyle(RituoPalette.white.opacity(0.28))
+
+                            HStack(spacing: 5) {
+                                Image(systemName: selectedDurationMinutes == nil ? "infinity" : "timer")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(
+                                        selectedDurationMinutes == nil
+                                            ? RituoPalette.white.opacity(0.5)
+                                            : mode.accentColor
+                                    )
+                                Text(durationValueText)
+                                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                                    .foregroundStyle(RituoPalette.white)
+                                    .contentTransition(.numericText())
                             }
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(
-                                selectedDurationMinutes == nil
-                                    ? RituoPalette.white.opacity(0.30)
-                                    : mode.accentColor.opacity(0.78)
+
+                            HStack(spacing: 3) {
+                                Image(systemName: "pencil")
+                                    .font(.system(size: 8, weight: .bold))
+                                Text("Cambiar")
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                            .foregroundStyle(mode.accentColor)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(
+                                Capsule().fill(mode.accentColor.opacity(0.16))
                             )
                         }
                         .frame(maxWidth: .infinity)
@@ -1548,33 +1715,104 @@ private struct ModeConfirmStartSheet: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 14)
 
-                VStack(spacing: 10) {
-                    ModeStartOptionToggle(
-                        title: "Modo estricto",
-                        subtitle: "Impide eliminar rituo mientras este modo esté activo.",
-                        iconName: "lock.shield.fill",
-                        accentColor: mode.accentColor,
-                        isOn: $strictModeEnabled
-                    )
+                // Toggles + Recreos scroll if the content doesn't fit (smaller
+                // devices, larger Dynamic Type) instead of clipping/cramming.
+                GeometryReader { geometry in
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 0) {
+                            VStack(spacing: 10) {
+                                ModeStartOptionToggle(
+                                    title: "Modo estricto",
+                                    subtitle: "Impide eliminar rituo mientras este modo esté activo.",
+                                    iconName: "lock.shield.fill",
+                                    accentColor: mode.accentColor,
+                                    isOn: $strictModeEnabled
+                                )
 
-                    ModeStartOptionToggle(
-                        title: "Bloquear descargas de apps",
-                        subtitle: "Impide instalar nuevas apps mientras este modo esté activo.",
-                        iconName: "arrow.down.app.fill",
-                        accentColor: mode.accentColor,
-                        isOn: $blockAppInstallation
-                    )
+                                ModeStartOptionToggle(
+                                    title: "Bloquear descargas de apps",
+                                    subtitle: "Impide instalar nuevas apps mientras este modo esté activo.",
+                                    iconName: "arrow.down.app.fill",
+                                    accentColor: mode.accentColor,
+                                    isOn: $blockAppInstallation
+                                )
 
-                    ModeStartOptionToggle(
-                        title: "Bloquear contenido sensible en la web",
-                        subtitle: "Filtra contenido adulto y, con la extensión de Safari habilitada, bloquea redes sociales y apuestas.",
-                        iconName: "shield.lefthalf.filled",
-                        accentColor: mode.accentColor,
-                        isOn: $blockAdultContent
-                    )
+                                ModeStartOptionToggle(
+                                    title: "Bloquear contenido sensible en la web",
+                                    subtitle: "Filtra contenido adulto y, con la extensión de Safari habilitada, bloquea redes sociales y apuestas.",
+                                    iconName: "shield.lefthalf.filled",
+                                    accentColor: mode.accentColor,
+                                    isOn: $blockAdultContent
+                                )
+                            }
+                            .padding(.horizontal, 24)
+                            .padding(.bottom, 14)
+
+                            // Recreos
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("RECREOS")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .tracking(1.8)
+                                    .foregroundStyle(RituoPalette.white.opacity(0.30))
+
+                                HStack(spacing: 8) {
+                                    ForEach(0 ... 3, id: \.self) { count in
+                                        let active = breakCount == count
+                                        Button {
+                                            withAnimation(.easeInOut(duration: 0.18)) { breakCount = count }
+                                        } label: {
+                                            Text("\(count)")
+                                                .font(.system(size: 14, weight: active ? .bold : .medium))
+                                                .foregroundStyle(active ? RituoPalette.deepOceanBlue : RituoPalette.white.opacity(0.45))
+                                                .frame(maxWidth: .infinity)
+                                                .padding(.vertical, 10)
+                                                .background(
+                                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                                        .fill(active ? RituoPalette.white : RituoPalette.white.opacity(0.07))
+                                                )
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+
+                                if breakCount > 0 {
+                                    HStack(spacing: 8) {
+                                        ForEach(1 ... 5, id: \.self) { minutes in
+                                            let active = breakDurationMinutes == minutes
+                                            Button {
+                                                breakDurationMinutes = minutes
+                                            } label: {
+                                                Text("\(minutes)m")
+                                                    .font(.system(size: 14, weight: active ? .bold : .medium))
+                                                    .foregroundStyle(active ? RituoPalette.deepOceanBlue : RituoPalette.white.opacity(0.45))
+                                                    .frame(maxWidth: .infinity)
+                                                    .padding(.vertical, 10)
+                                                    .background(
+                                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                                            .fill(active ? RituoPalette.white : RituoPalette.white.opacity(0.07))
+                                                    )
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+                                    }
+                                    .transition(.move(edge: .top).combined(with: .opacity))
+                                }
+                            }
+                            .padding(16)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(Color(red: 0.12, green: 0.16, blue: 0.26))
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                            .stroke(RituoPalette.white.opacity(0.06), lineWidth: 1)
+                                    }
+                            )
+                            .padding(.horizontal, 24)
+                        }
+                        .frame(width: geometry.size.width)
+                    }
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 22)
+                .padding(.bottom, 14)
 
                 // Botones
                 VStack(spacing: 10) {
@@ -1586,6 +1824,8 @@ private struct ModeConfirmStartSheet: View {
                         configuredMode.strictModeEnabled = strictModeEnabled
                         configuredMode.blockAppInstallation = blockAppInstallation
                         configuredMode.blockAdultContent = blockAdultContent
+                        configuredMode.breakCount = breakCount
+                        configuredMode.breakDurationMinutes = breakDurationMinutes
                         onConfirm(configuredMode, selectedDurationMinutes)
                     }
 
@@ -1601,7 +1841,7 @@ private struct ModeConfirmStartSheet: View {
                 .padding(.bottom, 16)
             }
         }
-        .presentationDetents([.height(550)])
+        .presentationDetents([.height(680)])
         .presentationDragIndicator(.hidden)
         .presentationCornerRadius(28)
         .sheet(isPresented: $isDurationPickerPresented) {

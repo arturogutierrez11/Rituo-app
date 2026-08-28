@@ -7,6 +7,7 @@ enum SyncOperationType: String {
     case recordScheduledRitual
     case syncModeConfiguration
     case createRitualConfiguration
+    case updateRitualConfiguration
     case deleteRitual
 }
 

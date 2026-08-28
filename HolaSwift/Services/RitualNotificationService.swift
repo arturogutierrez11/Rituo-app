@@ -114,6 +114,37 @@ final class RitualNotificationService {
         center.add(request)
     }
 
+    func sendRitualBreakStartedNotification(for scheduler: RitualScheduler, minutes: Int) {
+        let content = UNMutableNotificationContent()
+        content.title = "Recreo activado"
+        content.body = "\(scheduler.title) está en pausa por \(minutes) minutos. Las apps vuelven a bloquearse al terminar."
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: ritualBreakStartedNotificationIdentifier(for: scheduler),
+            content: content,
+            trigger: nil
+        )
+
+        center.add(request) { [debugStore] error in
+            if let error {
+                debugStore.log("Error notificación inicio recreo \(scheduler.title): \(error.localizedDescription)")
+            } else {
+                debugStore.log("Notificación inicio recreo enviada para \(scheduler.title).")
+            }
+        }
+    }
+
+    func cancelRitualBreakNotifications(for scheduler: RitualScheduler) {
+        let identifiers = [
+            ritualBreakStartedNotificationIdentifier(for: scheduler),
+            ritualBreakEndedNotificationIdentifier(for: scheduler)
+        ]
+        center.removePendingNotificationRequests(withIdentifiers: identifiers)
+        center.removeDeliveredNotifications(withIdentifiers: identifiers)
+        debugStore.log("Notificaciones de recreo removidas para \(scheduler.title).")
+    }
+
     func sendModeBreakStartedNotification(for mode: FocusMode, minutes: Int) {
         let content = UNMutableNotificationContent()
         content.title = "Recreo activado"
@@ -336,6 +367,14 @@ final class RitualNotificationService {
 
     private func modeBreakEndedNotificationIdentifier(for mode: FocusMode) -> String {
         "rituo.mode.break.ended.\(mode.id)"
+    }
+
+    private func ritualBreakStartedNotificationIdentifier(for scheduler: RitualScheduler) -> String {
+        "rituo.ritual.break.started.\(scheduler.id.uuidString)"
+    }
+
+    private func ritualBreakEndedNotificationIdentifier(for scheduler: RitualScheduler) -> String {
+        "rituo.ritual.break.ended.\(scheduler.id.uuidString)"
     }
 
     private func startNotificationBody(for scheduler: RitualScheduler) -> String {

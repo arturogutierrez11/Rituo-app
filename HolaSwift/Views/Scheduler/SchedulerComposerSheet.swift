@@ -6,11 +6,14 @@ import SwiftUI
 struct SchedulerComposerSheet: View {
     @ObservedObject var viewModel: BlockSetupViewModel
     let accessToken: String?
+    let editingScheduler: RitualScheduler?
     @Environment(\.dismiss) private var dismiss
     @State private var title = ""
     @State private var startDate = Self.defaultDate(hour: 17, minute: 0)
     @State private var endDate = Self.defaultDate(hour: 18, minute: 0)
     @State private var selectedWeekdays: Set<Int> = [2, 3, 4, 5, 6]
+    @State private var breakCount = 0
+    @State private var breakDurationMinutes = 5
     @State private var isPasswordProtected = false
     @State private var isNfcProtected = false
     @State private var isStrictModeEnabled = false
@@ -20,10 +23,19 @@ struct SchedulerComposerSheet: View {
     @State private var passwordConfirmation = ""
     @State private var protectionMessage: String?
     @State private var isSaving = false
+    @State private var hasConfiguredInitialState = false
 
-    init(viewModel: BlockSetupViewModel, accessToken: String? = nil) {
+    init(viewModel: BlockSetupViewModel, accessToken: String? = nil, editingScheduler: RitualScheduler? = nil) {
         self.viewModel = viewModel
         self.accessToken = accessToken
+        self.editingScheduler = editingScheduler
+    }
+
+    /// The edited ritual was already protected before this session started — editing
+    /// (including just changing the schedule) requires re-entering that existing
+    /// password to authorize the change, per core-api's PATCH /rituals/:id contract.
+    private var requiresExistingPasswordToSave: Bool {
+        editingScheduler?.isProtected == true
     }
 
     private let cardBg = Color(red: 0.12, green: 0.16, blue: 0.26)
@@ -41,7 +53,7 @@ struct SchedulerComposerSheet: View {
 
                     Spacer()
 
-                    Text("Nuevo ritual")
+                    Text(editingScheduler == nil ? "Nuevo ritual" : "Editar ritual")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(RituoPalette.white)
 
@@ -71,11 +83,16 @@ struct SchedulerComposerSheet: View {
                     .fill(RituoPalette.white.opacity(0.06))
                     .frame(height: 1)
 
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 12) {
+                // GeometryReader hard-clamps the content to exactly the available width —
+                // without it, a child that refuses to compress below its intrinsic size
+                // (e.g. a DatePicker chip) can make the content wider than the screen,
+                // which makes the "vertical-only" ScrollView draggable sideways too.
+                GeometryReader { geometry in
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 12) {
                         // Hero header
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Nuevo ritual")
+                            Text(editingScheduler == nil ? "Nuevo ritual" : "Editar ritual")
                                 .font(.system(size: 30, weight: .bold))
                                 .foregroundStyle(RituoPalette.white)
                             Text("Definí horario, días y las apps a bloquear.")
@@ -97,35 +114,39 @@ struct SchedulerComposerSheet: View {
 
                         // Horario
                         composerCard(label: "HORARIO") {
-                            VStack(spacing: 0) {
-                                HStack {
-                                    Text("Empieza")
-                                        .font(.system(size: 15))
-                                        .foregroundStyle(RituoPalette.white.opacity(0.70))
-                                    Spacer()
-                                    DatePicker("", selection: $startDate, displayedComponents: .hourAndMinute)
-                                        .labelsHidden()
-                                        .colorScheme(.dark)
-                                        .environment(\.locale, Self.twentyFourHourLocale)
-                                }
-                                .padding(.vertical, 4)
+                            VStack(spacing: 16) {
+                                HStack(spacing: 0) {
+                                    Circle()
+                                        .fill(RituoPalette.lightBlue)
+                                        .frame(width: 8, height: 8)
+                                        .shadow(color: RituoPalette.lightBlue.opacity(0.85), radius: 6)
 
-                                Rectangle()
-                                    .fill(RituoPalette.white.opacity(0.06))
-                                    .frame(height: 1)
-                                    .padding(.vertical, 4)
+                                    LinearGradient(
+                                        colors: [RituoPalette.lightBlue.opacity(0.65), RituoPalette.lightBlue.opacity(0.10)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                    .frame(height: 2)
 
-                                HStack {
-                                    Text("Termina")
-                                        .font(.system(size: 15))
-                                        .foregroundStyle(RituoPalette.white.opacity(0.70))
-                                    Spacer()
-                                    DatePicker("", selection: $endDate, displayedComponents: .hourAndMinute)
-                                        .labelsHidden()
-                                        .colorScheme(.dark)
-                                        .environment(\.locale, Self.twentyFourHourLocale)
+                                    Circle()
+                                        .fill(RituoPalette.lightBlue.opacity(0.35))
+                                        .frame(width: 8, height: 8)
                                 }
-                                .padding(.vertical, 4)
+
+                                HStack(spacing: 10) {
+                                    timeChip(label: "EMPIEZA", selection: $startDate)
+                                    Image(systemName: "arrow.right")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundStyle(RituoPalette.lightBlue.opacity(0.45))
+                                    timeChip(label: "TERMINA", selection: $endDate)
+                                }
+
+                                if !durationSummaryText.isEmpty {
+                                    Text(durationSummaryText)
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(RituoPalette.lightBlue.opacity(0.85))
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
                             }
                         }
 
@@ -155,6 +176,47 @@ struct SchedulerComposerSheet: View {
                                     }
                                     .buttonStyle(LoginPressButtonStyle())
                                 }
+                            }
+                        }
+
+                        // Recreos
+                        composerCard(label: "RECREOS") {
+                            VStack(alignment: .leading, spacing: 16) {
+                                HStack(spacing: 12) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(
+                                                RadialGradient(
+                                                    colors: [RituoPalette.lightBlue.opacity(0.30), RituoPalette.lightBlue.opacity(0.08)],
+                                                    center: .center,
+                                                    startRadius: 0,
+                                                    endRadius: 22
+                                                )
+                                            )
+                                            .frame(width: 38, height: 38)
+                                        Image(systemName: "cup.and.saucer.fill")
+                                            .font(.system(size: 15, weight: .medium))
+                                            .foregroundStyle(RituoPalette.lightBlue)
+                                            .shadow(color: RituoPalette.lightBlue.opacity(0.6), radius: 4)
+                                    }
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(breakSummaryText)
+                                            .font(.system(size: 15, weight: .semibold))
+                                            .foregroundStyle(RituoPalette.white)
+                                        Text("Pausa el bloqueo por un rato durante el ritual.")
+                                            .font(.system(size: 12))
+                                            .foregroundStyle(RituoPalette.white.opacity(0.35))
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+
+                                breakPillRow(label: "CANTIDAD", values: Array(0 ... 3), suffix: "", selection: $breakCount)
+
+                                breakPillRow(label: "DURACIÓN POR RECREO", values: Array(1 ... 5), suffix: "m", selection: $breakDurationMinutes)
+                                    .opacity(breakCount > 0 ? 1 : 0.35)
+                                    .disabled(breakCount == 0)
+                                    .animation(.easeInOut(duration: 0.18), value: breakCount)
                             }
                         }
 
@@ -250,7 +312,35 @@ struct SchedulerComposerSheet: View {
                                 }
                                 .tint(RituoPalette.lightBlue)
 
-                                if isPasswordProtected {
+                                if requiresExistingPasswordToSave {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("Este ritual ya está protegido. Ingresá la contraseña actual para guardar cualquier cambio, aunque no sea de protección.")
+                                            .font(.system(size: 12))
+                                            .foregroundStyle(RituoPalette.white.opacity(0.45))
+
+                                        SecureField("Contraseña actual", text: $password)
+                                            .textContentType(.password)
+                                            .font(.system(size: 15))
+                                            .foregroundStyle(RituoPalette.white)
+                                            .padding(.horizontal, 14)
+                                            .padding(.vertical, 12)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                                    .fill(RituoPalette.white.opacity(0.06))
+                                                    .overlay {
+                                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                                            .stroke(RituoPalette.lightBlue.opacity(0.22), lineWidth: 1)
+                                                    }
+                                            )
+                                    }
+                                    .transition(.move(edge: .top).combined(with: .opacity))
+
+                                    if let protectionMessage {
+                                        Text(protectionMessage)
+                                            .font(.system(size: 12, weight: .medium))
+                                            .foregroundStyle(RituoPalette.danger)
+                                    }
+                                } else if isPasswordProtected {
                                     VStack(spacing: 8) {
                                         SecureField("Contraseña", text: $password)
                                             .textContentType(.newPassword)
@@ -336,8 +426,10 @@ struct SchedulerComposerSheet: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 20)
                         }
+                        }
+                        .padding(.bottom, 40)
+                        .frame(width: geometry.size.width)
                     }
-                    .padding(.bottom, 40)
                 }
             }
         }
@@ -345,6 +437,34 @@ struct SchedulerComposerSheet: View {
             isPresented: $viewModel.isPickerPresented,
             selection: $viewModel.selection
         )
+        .onAppear { configureForEditingIfNeeded() }
+    }
+
+    // MARK: - Edit mode
+
+    private func configureForEditingIfNeeded() {
+        guard !hasConfiguredInitialState else { return }
+        hasConfiguredInitialState = true
+
+        guard let editingScheduler else {
+            // Creating a new ritual: don't inherit a selection left over from
+            // whatever the app selection picker was last used for.
+            viewModel.selection = FamilyActivitySelection()
+            return
+        }
+
+        title = editingScheduler.title
+        startDate = Self.defaultDate(hour: editingScheduler.startHour, minute: editingScheduler.startMinute)
+        endDate = Self.defaultDate(hour: editingScheduler.endHour, minute: editingScheduler.endMinute)
+        selectedWeekdays = Set(editingScheduler.weekdays)
+        breakCount = editingScheduler.breakCount
+        breakDurationMinutes = editingScheduler.breakDurationMinutes
+        isPasswordProtected = editingScheduler.isProtected
+        isNfcProtected = editingScheduler.nfcUnlockEnabled
+        isStrictModeEnabled = editingScheduler.strictModeEnabled
+        blockAppInstallation = editingScheduler.blockAppInstallation
+        blockAdultContent = editingScheduler.blockAdultContent
+        viewModel.selection = editingScheduler.selection
     }
 
     // MARK: - Card helper
@@ -394,7 +514,12 @@ struct SchedulerComposerSheet: View {
     private func save() {
         guard !isSaving else { return }
 
-        if isPasswordProtected {
+        if requiresExistingPasswordToSave {
+            guard !password.isEmpty else {
+                protectionMessage = "Ingresá la contraseña actual del ritual."
+                return
+            }
+        } else if isPasswordProtected {
             guard password.count >= 4 else {
                 protectionMessage = "Usá al menos 4 caracteres."
                 return
@@ -410,22 +535,46 @@ struct SchedulerComposerSheet: View {
         let calendar = Calendar.current
         let startComponents = calendar.dateComponents([.hour, .minute], from: startDate)
         let endComponents = calendar.dateComponents([.hour, .minute], from: endDate)
+        let passwordToSend = (isPasswordProtected || requiresExistingPasswordToSave) ? password : nil
 
-        let didSave = viewModel.saveScheduler(
-            title: title,
-            focusTarget: "",
-            startHour: startComponents.hour ?? 0,
-            startMinute: startComponents.minute ?? 0,
-            endHour: endComponents.hour ?? 0,
-            endMinute: endComponents.minute ?? 0,
-            weekdays: Array(selectedWeekdays),
-            isProtected: isPasswordProtected,
-            nfcUnlockEnabled: isNfcProtected,
-            strictModeEnabled: isStrictModeEnabled,
-            blockAppInstallation: blockAppInstallation,
-            blockAdultContent: blockAdultContent,
-            password: isPasswordProtected ? password : nil
-        )
+        let didSave: Bool
+        if let editingScheduler {
+            didSave = viewModel.updateScheduler(
+                editingScheduler,
+                title: title,
+                startHour: startComponents.hour ?? 0,
+                startMinute: startComponents.minute ?? 0,
+                endHour: endComponents.hour ?? 0,
+                endMinute: endComponents.minute ?? 0,
+                weekdays: Array(selectedWeekdays),
+                isProtected: isPasswordProtected,
+                nfcUnlockEnabled: isNfcProtected,
+                strictModeEnabled: isStrictModeEnabled,
+                blockAppInstallation: blockAppInstallation,
+                blockAdultContent: blockAdultContent,
+                breakCount: breakCount,
+                breakDurationMinutes: breakDurationMinutes,
+                password: passwordToSend
+            )
+        } else {
+            didSave = viewModel.saveScheduler(
+                title: title,
+                focusTarget: "",
+                startHour: startComponents.hour ?? 0,
+                startMinute: startComponents.minute ?? 0,
+                endHour: endComponents.hour ?? 0,
+                endMinute: endComponents.minute ?? 0,
+                weekdays: Array(selectedWeekdays),
+                isProtected: isPasswordProtected,
+                nfcUnlockEnabled: isNfcProtected,
+                strictModeEnabled: isStrictModeEnabled,
+                blockAppInstallation: blockAppInstallation,
+                blockAdultContent: blockAdultContent,
+                breakCount: breakCount,
+                breakDurationMinutes: breakDurationMinutes,
+                password: passwordToSend
+            )
+        }
 
         guard didSave else {
             isSaving = false
@@ -434,7 +583,11 @@ struct SchedulerComposerSheet: View {
 
         if let accessToken {
             Task {
-                await viewModel.syncLatestSchedulerToCore(accessToken: accessToken)
+                if editingScheduler != nil {
+                    await viewModel.syncLatestSchedulerUpdateToCore(accessToken: accessToken)
+                } else {
+                    await viewModel.syncLatestSchedulerToCore(accessToken: accessToken)
+                }
                 await MainActor.run {
                     isSaving = false
                     dismiss()
@@ -450,6 +603,109 @@ struct SchedulerComposerSheet: View {
 
     private var weekdayOptions: [(id: Int, title: String)] {
         [(2, "L"), (3, "M"), (4, "X"), (5, "J"), (6, "V"), (7, "S"), (1, "D")]
+    }
+
+    @ViewBuilder
+    private func timeChip(label: String, selection: Binding<Date>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.system(size: 10, weight: .bold))
+                .tracking(1.2)
+                .foregroundStyle(RituoPalette.white.opacity(0.30))
+            DatePicker("", selection: selection, displayedComponents: .hourAndMinute)
+                .labelsHidden()
+                .colorScheme(.dark)
+                .environment(\.locale, Self.twentyFourHourLocale)
+                .tint(RituoPalette.lightBlue)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(RituoPalette.lightBlue.opacity(0.07))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(RituoPalette.lightBlue.opacity(0.22), lineWidth: 1)
+                }
+        )
+    }
+
+    private var durationSummaryText: String {
+        let calendar = Calendar.current
+        let startComponents = calendar.dateComponents([.hour, .minute], from: startDate)
+        let endComponents = calendar.dateComponents([.hour, .minute], from: endDate)
+        let startTotal = (startComponents.hour ?? 0) * 60 + (startComponents.minute ?? 0)
+        let endTotal = (endComponents.hour ?? 0) * 60 + (endComponents.minute ?? 0)
+        guard startTotal != endTotal else { return "" }
+
+        let duration = endTotal < startTotal ? (24 * 60 - startTotal + endTotal) : (endTotal - startTotal)
+        let hours = duration / 60
+        let minutes = duration % 60
+        var text = ""
+        if hours > 0 { text += "\(hours)h" }
+        if minutes > 0 { text += (text.isEmpty ? "" : " ") + "\(minutes)m" }
+        if endTotal <= startTotal { text += " · cruza medianoche" }
+        return text
+    }
+
+    private var breakSummaryText: String {
+        guard breakCount > 0 else { return "Sin recreos" }
+        let plural = breakCount == 1 ? "recreo" : "recreos"
+        return "\(breakCount) \(plural) de \(breakDurationMinutes) min"
+    }
+
+    @ViewBuilder
+    private func breakPillRow(
+        label: String,
+        values: [Int],
+        suffix: String,
+        selection: Binding<Int>
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(label)
+                .font(.system(size: 10, weight: .bold))
+                .tracking(1.2)
+                .foregroundStyle(RituoPalette.white.opacity(0.28))
+            HStack(spacing: 6) {
+                ForEach(values, id: \.self) { value in
+                    let active = selection.wrappedValue == value
+                    Button {
+                        selection.wrappedValue = value
+                    } label: {
+                        Text("\(value)\(suffix)")
+                            .font(.system(size: 14, weight: active ? .bold : .medium))
+                            .foregroundStyle(active ? RituoPalette.white : RituoPalette.white.opacity(0.50))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 11)
+                            .background(
+                                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                    .fill(
+                                        active
+                                            ? AnyShapeStyle(
+                                                LinearGradient(
+                                                    colors: [RituoPalette.lightBlue, RituoPalette.lightBlue.opacity(0.65)],
+                                                    startPoint: .top,
+                                                    endPoint: .bottom
+                                                )
+                                            )
+                                            : AnyShapeStyle(Color.clear)
+                                    )
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                            .stroke(RituoPalette.white.opacity(active ? 0 : 0.12), lineWidth: 1)
+                                    }
+                            )
+                            .shadow(color: active ? RituoPalette.lightBlue.opacity(0.5) : .clear, radius: active ? 8 : 0, y: active ? 3 : 0)
+                    }
+                    .buttonStyle(LoginPressButtonStyle())
+                }
+            }
+            .padding(4)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(RituoPalette.white.opacity(0.04))
+            )
+        }
     }
 
     private static func defaultDate(hour: Int, minute: Int) -> Date {

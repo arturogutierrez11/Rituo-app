@@ -15,6 +15,7 @@ private extension ManagedSettingsStore.Name {
 final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
     private static let modeBreakEndActivityPrefix = "rituo.modeBreakEnd."
     private static let modeEndActivityPrefix = "rituo.modeEnd."
+    private static let ritualBreakEndActivityPrefix = "rituo.ritualBreakEnd."
 
     private struct ActiveRitualCandidate {
         let activity: SharedActiveRitualActivity
@@ -47,6 +48,14 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
         if isModeBreakEndActivity(activity) {
             clearModeStores()
             debugStore.log("Recreo de modo iniciado por DeviceActivity \(activity.rawValue).")
+            return
+        }
+
+        if isRitualBreakEndActivity(activity) {
+            clear(store: store)
+            clear(store: legacyStore)
+            clearStrictModeRestriction()
+            debugStore.log("Recreo de ritual iniciado por DeviceActivity \(activity.rawValue).")
             return
         }
 
@@ -100,6 +109,11 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
 
         if isModeBreakEndActivity(activity) {
             finishModeBreakActivity(activity, source: "end")
+            return
+        }
+
+        if isRitualBreakEndActivity(activity) {
+            finishRitualBreakActivity(activity, source: "end")
             return
         }
 
@@ -235,6 +249,10 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
 
         if isModeBreakEndActivity(activity) {
             finishModeBreakActivity(activity, source: "warning")
+        }
+
+        if isRitualBreakEndActivity(activity) {
+            finishRitualBreakActivity(activity, source: "warning")
         }
     }
 
@@ -395,6 +413,55 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
                 debugStore.log("Error notificación extension fin recreo: \(error.localizedDescription).")
             } else {
                 debugStore.log("Notificación extension fin recreo enviada para \(title).")
+            }
+        }
+    }
+
+    private func isRitualBreakEndActivity(_ activity: DeviceActivityName) -> Bool {
+        activity.rawValue.hasPrefix(Self.ritualBreakEndActivityPrefix)
+    }
+
+    private func finishRitualBreakActivity(
+        _ activity: DeviceActivityName,
+        source: String
+    ) {
+        // Unlike mode breaks, ritual shields are reapplied via reconcileActiveRitualShield()
+        // (the same authoritative logic used on every ritual start/end) rather than the
+        // break's own stored selection, so priority/suppression stay correct.
+        sendRitualBreakEndedNotification(activity)
+        selectionStore.removeSelection(for: activity.rawValue)
+        metadataStore.removeMetadata(for: activity.rawValue)
+        center.stopMonitoring([activity])
+        _ = suppressionStore.takeRitualBreakActivityName()
+        reconcileActiveRitualShield()
+        debugStore.log("Fin de recreo de ritual procesado por \(source) \(activity.rawValue).")
+    }
+
+    private func sendRitualBreakEndedNotification(_ activity: DeviceActivityName) {
+        let metadata = metadataStore.loadMetadata(for: activity.rawValue)
+        let title = metadata?.title ?? "Tu ritual"
+        let identifier = metadata.map {
+            "rituo.ritual.break.ended.\($0.schedulerId)"
+        } ?? "rituo.ritual.break.extension.ended.\(activity.rawValue)"
+
+        let content = UNMutableNotificationContent()
+        content.title = "Recreo terminado"
+        content.body = "\(title) volvió a aplicar tus restricciones."
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: identifier,
+            content: content,
+            trigger: nil
+        )
+
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [identifier])
+        center.add(request) { [debugStore] error in
+            if let error {
+                debugStore.log("Error notificación extension fin recreo ritual: \(error.localizedDescription).")
+            } else {
+                debugStore.log("Notificación extension fin recreo ritual enviada para \(title).")
             }
         }
     }

@@ -39,6 +39,8 @@ enum CoreAPIError: LocalizedError {
                 return "Primero seleccioná las apps que querés bloquear."
             case "MODE_NOT_ACTIVE", "RITUAL_NOT_ACTIVE":
                 return "Esta configuración ya no está activa."
+            case "RITUAL_SESSION_ACTIVE":
+                return "No podés editar este ritual mientras está activo. Esperá a que termine e intentá de nuevo."
             default:
                 return "core-api respondió \(statusCode): \(message)"
             }
@@ -87,6 +89,9 @@ final class CoreApiService {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = requestTimeout
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        request.setValue("no-cache", forHTTPHeaderField: "Pragma")
 
         let (data, _) = try await send(request)
         return try JSONDecoder().decode(AppUpdateStatusResponse.self, from: data)
@@ -179,6 +184,23 @@ final class CoreApiService {
     }
 
 
+    func updateRitual(
+        accessToken: String,
+        ritualId: String,
+        body: UpdateRitualRequest,
+        idempotencyKey: String? = nil
+    ) async throws -> RitualResponse {
+        var request = try makeRequest(path: "/rituals/\(ritualId)", method: "PATCH", accessToken: accessToken)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let idempotencyKey {
+            request.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
+        }
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, _) = try await send(request)
+        return try JSONDecoder().decode(RitualResponse.self, from: data)
+    }
+
     func deleteRitual(
         accessToken: String,
         ritualId: String,
@@ -216,6 +238,25 @@ final class CoreApiService {
 
         let (data, _) = try await send(request)
         return try JSONDecoder().decode([RitualBlockedItemResponse].self, from: data)
+    }
+
+    func getRitualBreakConfig(accessToken: String, ritualId: String) async throws -> RitualBreakConfigResponse {
+        let request = try makeRequest(path: "/rituals/\(ritualId)/breaks", method: "GET", accessToken: accessToken)
+        let (data, _) = try await send(request)
+        return try JSONDecoder().decode(RitualBreakConfigResponse.self, from: data)
+    }
+
+    func saveRitualBreakConfig(
+        accessToken: String,
+        ritualId: String,
+        body: SaveBreakConfigRequest
+    ) async throws -> RitualBreakConfigResponse {
+        var request = try makeRequest(path: "/rituals/\(ritualId)/breaks", method: "POST", accessToken: accessToken)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, _) = try await send(request)
+        return try JSONDecoder().decode(RitualBreakConfigResponse.self, from: data)
     }
 
     func listModes(accessToken: String) async throws -> [ModeResponse] {
@@ -279,6 +320,25 @@ final class CoreApiService {
 
         let (data, _) = try await send(request)
         return try JSONDecoder().decode([ModeBlockedItemResponse].self, from: data)
+    }
+
+    func getModeBreakConfig(accessToken: String, modeId: String) async throws -> ModeBreakConfigResponse {
+        let request = try makeRequest(path: "/modes/\(modeId)/breaks", method: "GET", accessToken: accessToken)
+        let (data, _) = try await send(request)
+        return try JSONDecoder().decode(ModeBreakConfigResponse.self, from: data)
+    }
+
+    func saveModeBreakConfig(
+        accessToken: String,
+        modeId: String,
+        body: SaveBreakConfigRequest
+    ) async throws -> ModeBreakConfigResponse {
+        var request = try makeRequest(path: "/modes/\(modeId)/breaks", method: "POST", accessToken: accessToken)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, _) = try await send(request)
+        return try JSONDecoder().decode(ModeBreakConfigResponse.self, from: data)
     }
 
 
@@ -509,7 +569,10 @@ final class CoreApiService {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.timeoutInterval = requestTimeout
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("Bearer \(refreshedAccessToken ?? accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        request.setValue("no-cache", forHTTPHeaderField: "Pragma")
         return request
     }
 

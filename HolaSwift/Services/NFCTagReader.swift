@@ -3,20 +3,42 @@ import Foundation
 
 enum NFCTagReaderError: LocalizedError {
     case unsupported
+    case userCanceled
     case invalidated
+    case timedOut
+    case systemBusy
+    case terminatedUnexpectedly
     case unknownTag
     case unexpectedTag
 
     var errorDescription: String? {
         switch self {
         case .unsupported:
-            return "Este dispositivo no soporta lectura NFC."
+            return "No se pudo abrir el lector NFC. Reiniciá el iPhone e intentá de nuevo — a veces el lector queda bloqueado hasta que se reinicia el equipo."
+        case .userCanceled:
+            return "Cancelaste la lectura NFC."
         case .invalidated:
-            return "La lectura NFC fue cancelada o interrumpida."
+            return "La lectura NFC fue interrumpida."
+        case .timedOut:
+            return "Se agotó el tiempo de espera. Acercá el tag e intentá de nuevo."
+        case .systemBusy:
+            return "El lector NFC está ocupado o bloqueado por otra app (por ejemplo, una tarjeta de transporte o de pago en Wallet). Cerrá esas apps o desactivá el modo Express e intentá de nuevo."
+        case .terminatedUnexpectedly:
+            return "La lectura NFC se interrumpió inesperadamente. Intentá de nuevo. Si el problema sigue, reiniciá el iPhone."
         case .unknownTag:
             return "No se pudo identificar este tag NFC."
         case .unexpectedTag:
             return "Ese tag no está vinculado a esta cuenta."
+        }
+    }
+
+    /// Whether this failure is worth interrupting the user with a modal, versus a quiet inline status update.
+    var shouldPresentAlert: Bool {
+        switch self {
+        case .userCanceled:
+            return false
+        case .unsupported, .invalidated, .timedOut, .systemBusy, .terminatedUnexpectedly, .unknownTag, .unexpectedTag:
+            return true
         }
     }
 }
@@ -42,6 +64,13 @@ final class NFCTagReader: NSObject, NFCTagReaderSessionDelegate {
             return
         }
 
+        // iOS only allows one active NFCTagReaderSession at a time. If a previous
+        // session was never cleanly invalidated (e.g. the app was backgrounded
+        // mid-scan), starting a new one here fails instantly with
+        // "Session invalidated unexpectedly" and the reader sheet never appears.
+        session?.invalidate()
+        session = nil
+
         self.onResult = onResult
         self.expectedIdentifier = expectedIdentifier?
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -60,15 +89,27 @@ final class NFCTagReader: NSObject, NFCTagReaderSessionDelegate {
 
     func tagReaderSession(_ session: NFCTagReaderSession, didInvalidateWithError error: Error) {
         let nsError = error as NSError
-        if nsError.domain == NFCReaderError.errorDomain &&
-            (nsError.code == NFCReaderError.readerSessionInvalidationErrorFirstNDEFTagRead.rawValue ||
-             nsError.code == NFCReaderError.readerSessionInvalidationErrorUserCanceled.rawValue) {
-            onResult?(.failure(NFCTagReaderError.invalidated))
+        if nsError.domain == NFCReaderError.errorDomain,
+           let code = NFCReaderError.Code(rawValue: nsError.code) {
+            switch code {
+            case .readerSessionInvalidationErrorFirstNDEFTagRead:
+                onResult?(.failure(NFCTagReaderError.invalidated))
+            case .readerSessionInvalidationErrorUserCanceled:
+                onResult?(.failure(NFCTagReaderError.userCanceled))
+            case .readerSessionInvalidationErrorSessionTimeout:
+                onResult?(.failure(NFCTagReaderError.timedOut))
+            case .readerSessionInvalidationErrorSystemIsBusy:
+                onResult?(.failure(NFCTagReaderError.systemBusy))
+            case .readerSessionInvalidationErrorSessionTerminatedUnexpectedly:
+                onResult?(.failure(NFCTagReaderError.terminatedUnexpectedly))
+            default:
+                onResult?(.failure(NFCTagReaderError.invalidated))
+            }
             cleanup()
             return
         }
 
-        onResult?(.failure(error))
+        onResult?(.failure(NFCTagReaderError.invalidated))
         cleanup()
     }
 

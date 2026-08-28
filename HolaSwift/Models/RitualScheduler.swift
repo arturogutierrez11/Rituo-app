@@ -19,6 +19,11 @@ struct RitualScheduler: Identifiable, Hashable, Codable {
     let strictModeEnabled: Bool
     let blockAppInstallation: Bool
     let blockAdultContent: Bool
+    /// Number of configured breaks (0-3). Synced via the dedicated
+    /// `/rituals/:id/breaks` endpoint, not the ritual create/update request.
+    let breakCount: Int
+    /// Minutes per break (1-5). Only meaningful when `breakCount > 0`.
+    let breakDurationMinutes: Int
 
     init(
         id: UUID = UUID(),
@@ -37,7 +42,9 @@ struct RitualScheduler: Identifiable, Hashable, Codable {
         nfcUnlockEnabled: Bool = false,
         strictModeEnabled: Bool = false,
         blockAppInstallation: Bool = false,
-        blockAdultContent: Bool = false
+        blockAdultContent: Bool = false,
+        breakCount: Int = 0,
+        breakDurationMinutes: Int = 5
     ) {
         self.id = id
         self.coreRitualId = coreRitualId
@@ -56,6 +63,8 @@ struct RitualScheduler: Identifiable, Hashable, Codable {
         self.strictModeEnabled = strictModeEnabled
         self.blockAppInstallation = blockAppInstallation
         self.blockAdultContent = blockAdultContent
+        self.breakCount = max(0, min(3, breakCount))
+        self.breakDurationMinutes = max(1, min(5, breakDurationMinutes))
     }
 
     var durationMinutes: Int {
@@ -269,12 +278,61 @@ extension RitualScheduler {
             nfcUnlockEnabled: nfcUnlockEnabled,
             strictModeEnabled: strictModeEnabled,
             blockAppInstallation: blockAppInstallation,
-            blockAdultContent: blockAdultContent
+            blockAdultContent: blockAdultContent,
+            breakCount: breakCount,
+            breakDurationMinutes: breakDurationMinutes
+        )
+    }
+
+    func withBreakConfig(breakCount: Int, breakDurationMinutes: Int) -> RitualScheduler {
+        RitualScheduler(
+            id: id,
+            coreRitualId: coreRitualId,
+            title: title,
+            detail: detail,
+            focusTarget: focusTarget,
+            symbolName: symbolName,
+            startHour: startHour,
+            startMinute: startMinute,
+            endHour: endHour,
+            endMinute: endMinute,
+            weekdays: weekdays,
+            selection: selection,
+            isProtected: isProtected,
+            nfcUnlockEnabled: nfcUnlockEnabled,
+            strictModeEnabled: strictModeEnabled,
+            blockAppInstallation: blockAppInstallation,
+            blockAdultContent: blockAdultContent,
+            breakCount: breakCount,
+            breakDurationMinutes: breakDurationMinutes
         )
     }
 
     func createRitualRequest(password: String? = nil) -> CreateRitualRequest {
         CreateRitualRequest(
+            title: title,
+            description: detail,
+            icon: symbolName,
+            durationMinutes: durationMinutes,
+            weekdays: weekdays,
+            startTime: Self.apiTime(hour: startHour, minute: startMinute),
+            endTime: Self.apiTime(hour: endHour, minute: endMinute),
+            appCount: appCount,
+            categoryCount: categoryCount,
+            domainCount: domainCount,
+            selectionDigest: selectionDigest,
+            isProtected: isProtected,
+            nfcUnlockEnabled: nfcUnlockEnabled,
+            password: isProtected ? password : nil
+        )
+    }
+
+    func breakConfigRequest() -> SaveBreakConfigRequest {
+        SaveBreakConfigRequest(breakCount: breakCount, breakDurationMinutes: breakDurationMinutes)
+    }
+
+    func updateRitualRequest(password: String? = nil) -> UpdateRitualRequest {
+        UpdateRitualRequest(
             title: title,
             description: detail,
             icon: symbolName,
@@ -388,6 +446,8 @@ extension RitualScheduler {
         case strictModeEnabled
         case blockAppInstallation
         case blockAdultContent
+        case breakCount
+        case breakDurationMinutes
     }
 
     init(from decoder: Decoder) throws {
@@ -410,7 +470,9 @@ extension RitualScheduler {
             nfcUnlockEnabled: try container.decodeIfPresent(Bool.self, forKey: .nfcUnlockEnabled) ?? false,
             strictModeEnabled: try container.decodeIfPresent(Bool.self, forKey: .strictModeEnabled) ?? false,
             blockAppInstallation: try container.decodeIfPresent(Bool.self, forKey: .blockAppInstallation) ?? false,
-            blockAdultContent: try container.decodeIfPresent(Bool.self, forKey: .blockAdultContent) ?? false
+            blockAdultContent: try container.decodeIfPresent(Bool.self, forKey: .blockAdultContent) ?? false,
+            breakCount: try container.decodeIfPresent(Int.self, forKey: .breakCount) ?? 0,
+            breakDurationMinutes: try container.decodeIfPresent(Int.self, forKey: .breakDurationMinutes) ?? 5
         )
     }
 }

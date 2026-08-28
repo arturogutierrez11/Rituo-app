@@ -14,6 +14,11 @@ struct FocusMode: Identifiable, Hashable, Codable {
     var strictModeEnabled: Bool
     var blockAppInstallation: Bool
     var blockAdultContent: Bool
+    /// Number of configured breaks (0-3). Synced via the dedicated
+    /// `/modes/:id/breaks` endpoint, not the mode update request.
+    var breakCount: Int
+    /// Minutes per break (1-5). Only meaningful when `breakCount > 0`.
+    var breakDurationMinutes: Int
 
     init(
         id: String,
@@ -25,7 +30,9 @@ struct FocusMode: Identifiable, Hashable, Codable {
         nfcUnlockEnabled: Bool = false,
         strictModeEnabled: Bool = false,
         blockAppInstallation: Bool = false,
-        blockAdultContent: Bool = false
+        blockAdultContent: Bool = false,
+        breakCount: Int = 0,
+        breakDurationMinutes: Int = 5
     ) {
         self.id = id
         self.coreModeId = coreModeId
@@ -37,6 +44,8 @@ struct FocusMode: Identifiable, Hashable, Codable {
         self.strictModeEnabled = strictModeEnabled
         self.blockAppInstallation = blockAppInstallation
         self.blockAdultContent = blockAdultContent
+        self.breakCount = max(0, min(3, breakCount))
+        self.breakDurationMinutes = max(1, min(5, breakDurationMinutes))
     }
 
     var appCount: Int {
@@ -133,6 +142,10 @@ extension FocusMode {
         )
     }
 
+    func breakConfigRequest() -> SaveBreakConfigRequest {
+        SaveBreakConfigRequest(breakCount: breakCount, breakDurationMinutes: breakDurationMinutes)
+    }
+
     func updateModeRequest(password: String? = nil) -> UpdateModeRequest {
         UpdateModeRequest(
             title: title,
@@ -201,6 +214,8 @@ extension FocusMode {
         case strictModeEnabled
         case blockAppInstallation
         case blockAdultContent
+        case breakCount
+        case breakDurationMinutes
     }
 
     init(from decoder: Decoder) throws {
@@ -216,7 +231,9 @@ extension FocusMode {
             nfcUnlockEnabled: try container.decodeIfPresent(Bool.self, forKey: .nfcUnlockEnabled) ?? false,
             strictModeEnabled: try container.decodeIfPresent(Bool.self, forKey: .strictModeEnabled) ?? false,
             blockAppInstallation: try container.decodeIfPresent(Bool.self, forKey: .blockAppInstallation) ?? false,
-            blockAdultContent: try container.decodeIfPresent(Bool.self, forKey: .blockAdultContent) ?? false
+            blockAdultContent: try container.decodeIfPresent(Bool.self, forKey: .blockAdultContent) ?? false,
+            breakCount: try container.decodeIfPresent(Int.self, forKey: .breakCount) ?? 0,
+            breakDurationMinutes: try container.decodeIfPresent(Int.self, forKey: .breakDurationMinutes) ?? 5
         )
     }
 }
