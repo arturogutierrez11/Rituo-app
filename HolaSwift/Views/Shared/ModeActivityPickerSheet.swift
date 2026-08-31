@@ -58,6 +58,26 @@ struct ModeActivityPickerSheet: View {
                         }
                     }
                 }
+                .safeAreaInset(edge: .top) {
+                    // iOS/Screen Time has an undocumented limit on how many
+                    // apps it can actually shield when several categories are
+                    // combined — the category token is opaque, so this is the
+                    // closest signal the app can see.
+                    if draftSelection.categoryTokens.count >= 2 {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 12))
+                            Text("Elegiste varias categorías juntas. Con muchas apps combinadas, iOS a veces no bloquea todas — probá el bloqueo antes de confiar en él, o elegí apps una por una si necesitás que sea seguro.")
+                                .font(.footnote.weight(.medium))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color.orange.opacity(0.85))
+                    }
+                }
                 .safeAreaInset(edge: .bottom) {
                     if let message = viewModel.modeMessage, !message.isEmpty {
                         Text(message)

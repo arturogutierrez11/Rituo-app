@@ -2464,21 +2464,26 @@ private struct ModeStartRow: View {
     private var isConfigured: Bool { mode.hasBlockingConfiguration }
 
     var body: some View {
-        HStack(spacing: 16) {
-            // Icon
-            RituoSymbolIcon(
-                size: 21,
-                color: mode.accentColor,
-                opacity: 0.85
+        HStack(spacing: 14) {
+            // Icon badge
+            ZStack {
+                Circle()
+                    .fill(RadialGradient(
+                        colors: [mode.accentColor.opacity(0.32), mode.accentColor.opacity(0.06)],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: 26
+                    ))
+                RituoSymbolIcon(size: 19, color: mode.accentColor)
+            }
+            .frame(width: 46, height: 46)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(mode.accentColor.opacity(0.08))
             )
-                .frame(width: 28, height: 28)
-
-            Rectangle()
-                .fill(RituoPalette.white.opacity(0.07))
-                .frame(width: 1, height: 36)
 
             // Text
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(mode.title)
                         .font(.system(size: 16, weight: .semibold))
@@ -2489,9 +2494,14 @@ private struct ModeStartRow: View {
                             .foregroundStyle(RituoPalette.white.opacity(0.25))
                     }
                 }
-                Text(isConfigured ? "\(mode.blockingRuleCount) bloqueos" : "Sin configurar")
-                    .font(.system(size: 12))
-                    .foregroundStyle(RituoPalette.white.opacity(0.28))
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(isConfigured ? mode.accentColor : RituoPalette.white.opacity(0.18))
+                        .frame(width: 5, height: 5)
+                    Text(isConfigured ? "\(mode.blockingRuleCount) bloqueos" : "Sin configurar")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(isConfigured ? RituoPalette.white.opacity(0.45) : RituoPalette.white.opacity(0.24))
+                }
             }
 
             Spacer()
@@ -2519,23 +2529,27 @@ private struct ModeStartRow: View {
                 if isConfigured {
                     Button(action: onPlay) {
                         Image(systemName: "play.fill")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(mode.accentColor)
-                            .frame(width: 36, height: 36)
-                            .background(Circle().fill(mode.accentColor.opacity(0.12)))
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(RituoPalette.deepOceanBlue)
+                            .frame(width: 40, height: 40)
+                            .background(Circle().fill(mode.accentColor))
+                            .shadow(color: mode.accentColor.opacity(0.55), radius: 8, y: 3)
                     }
                     .buttonStyle(LoginPressButtonStyle())
                 }
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 18)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(Color(red: 0.12, green: 0.16, blue: 0.25))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(RituoPalette.white.opacity(0.06), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(
+                            isConfigured ? mode.accentColor.opacity(0.28) : RituoPalette.white.opacity(0.06),
+                            lineWidth: 1
+                        )
                 }
         )
     }

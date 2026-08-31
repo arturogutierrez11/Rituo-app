@@ -532,6 +532,13 @@ struct SchedulerHighlightCard: View {
 struct AppSelectionPreview: View {
     let selection: FamilyActivitySelection
 
+    /// iOS/Screen Time has an undocumented limit on how many apps it can
+    /// actually shield when several categories are combined — the category
+    /// token is opaque, so this is the closest signal the app can see.
+    private var hasMultipleCategoriesWarning: Bool {
+        selection.categoryTokens.count >= 2
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if applicationTokens.isEmpty && categoryTokens.isEmpty && domainTokens.isEmpty {
@@ -539,6 +546,23 @@ struct AppSelectionPreview: View {
                     .font(.custom("Helvetica", size: 13).weight(.medium))
                     .foregroundStyle(RituoPalette.subtext)
             } else {
+                if hasMultipleCategoriesWarning {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(RituoPalette.danger)
+                        Text("Elegiste varias categorías juntas. Con muchas apps combinadas, iOS a veces no bloquea todas — probá el bloqueo antes de confiar en él, o elegí apps una por una si necesitás que sea seguro.")
+                            .font(.custom("Helvetica", size: 12).weight(.medium))
+                            .foregroundStyle(RituoPalette.subtext)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(RituoPalette.danger.opacity(0.08))
+                    )
+                }
+
                 if !applicationTokens.isEmpty {
                     previewSection(title: "Apps") {
                         ForEach(applicationTokens, id: \.self) { token in

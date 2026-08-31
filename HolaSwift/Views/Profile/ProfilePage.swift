@@ -766,12 +766,6 @@ struct RituoPhysicalCard: View {
                     ))
                     .blendMode(.plusLighter)
 
-                // Large centered emblem, embossed into the metal — this is
-                // the card's real signature, the way it looks on the actual
-                // physical tag, not a small corner watermark.
-                RituoSymbolIcon(size: geo.size.height * 0.62, color: .white, opacity: 0.12)
-                    .position(x: geo.size.width * 0.5, y: geo.size.height * 0.52)
-
                 Text("rituo")
                     .font(.custom("Helvetica", size: geo.size.height * 0.125).weight(.semibold))
                     .tracking(0.5)
