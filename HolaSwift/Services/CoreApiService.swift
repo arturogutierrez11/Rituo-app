@@ -6,6 +6,9 @@ enum CoreAPIError: LocalizedError {
     case serverError(Int, String, String?)
     case timedOut
     case networkUnavailable(String)
+    /// A request was superseded/cancelled client-side (e.g. a token refresh
+    /// starting a fresh request) — not a sign the network is unreachable.
+    case cancelled
 
     var errorDescription: String? {
         switch self {
@@ -13,6 +16,8 @@ enum CoreAPIError: LocalizedError {
             return "La URL del core-api no es valida."
         case .invalidResponse:
             return "La respuesta del core-api no es valida."
+        case .cancelled:
+            return "La operación fue cancelada."
         case let .serverError(statusCode, message, code):
             switch code {
             case "ACTIVE_FOCUS_SESSION_EXISTS":
@@ -49,6 +54,20 @@ enum CoreAPIError: LocalizedError {
         case let .networkUnavailable(message):
             return "No se pudo conectar con core-api: \(message)"
         }
+    }
+
+    var isConnectivityProblem: Bool {
+        switch self {
+        case .timedOut, .networkUnavailable:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var isCancelled: Bool {
+        if case .cancelled = self { return true }
+        return false
     }
 }
 
@@ -659,6 +678,10 @@ final class CoreApiService {
 
         if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorTimedOut {
             return .timedOut
+        }
+
+        if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled {
+            return .cancelled
         }
 
         return .networkUnavailable(error.localizedDescription)

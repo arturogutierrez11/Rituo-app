@@ -7,6 +7,8 @@ import UIKit
 final class AuthViewModel: ObservableObject {
     private let tokenStore = KeychainTokenStore.shared
     private let networkMonitor = NetworkConnectivityMonitor()
+    private let defaults = UserDefaults.standard
+    private let legalRequirementsSatisfiedKeyPrefix = "rituo.legalRequirementsSatisfied."
 
     @Published var isLoading = false
     @Published var authUser: AuthUser?
@@ -44,9 +46,13 @@ final class AuthViewModel: ObservableObject {
     }
 
     var canEnterAuthenticatedApp: Bool {
-        isAuthenticated &&
-            hasCheckedLegalRequirements &&
-            legalRequirements?.requiresAcceptance == false
+        guard isAuthenticated, hasCheckedLegalRequirements else { return false }
+        // `legalRequirements` is nil only via the offline fallback below —
+        // we've confirmed before (last time we had connectivity) that this
+        // account has nothing pending, so a dropped connection on launch
+        // shouldn't lock the user out of an app they were already using.
+        guard let legalRequirements else { return true }
+        return legalRequirements.requiresAcceptance == false
     }
 
     var legalAccessTaskID: String {
@@ -69,12 +75,45 @@ final class AuthViewModel: ObservableObject {
                 accessToken: accessToken
             )
             hasCheckedLegalRequirements = true
+            if legalRequirements?.requiresAcceptance == false {
+                markLegalRequirementsSatisfied()
+            }
         } catch is CancellationError {
             return
         } catch {
-            legalRequirementsError = "Necesitamos conexión para verificar los términos vigentes. Revisá internet y volvé a intentar."
+            if (error as? CoreAPIError)?.isCancelled == true {
+                // Superseded by a newer request (e.g. a token refresh retry)
+                // — not a real failure, and not evidence either way about
+                // connectivity, so leave hasCheckedLegalRequirements as-is
+                // for whichever request actually completes.
+                return
+            }
+            if (error as? CoreAPIError)?.isConnectivityProblem == true, hasSatisfiedLegalRequirementsBefore {
+                // No connection, but this account already cleared legal
+                // requirements the last time we could check — same "trust
+                // the cache instead of locking the user out" call the app
+                // already makes for session restore.
+                legalRequirements = nil
+                hasCheckedLegalRequirements = true
+            } else {
+                legalRequirementsError = "Necesitamos conexión para verificar los términos vigentes. Revisá internet y volvé a intentar."
+            }
             print("Legal requirements error:", error)
         }
+    }
+
+    private var legalRequirementsSatisfiedKey: String? {
+        authUser.map { legalRequirementsSatisfiedKeyPrefix + $0.id }
+    }
+
+    private var hasSatisfiedLegalRequirementsBefore: Bool {
+        guard let legalRequirementsSatisfiedKey else { return false }
+        return defaults.bool(forKey: legalRequirementsSatisfiedKey)
+    }
+
+    private func markLegalRequirementsSatisfied() {
+        guard let legalRequirementsSatisfiedKey else { return }
+        defaults.set(true, forKey: legalRequirementsSatisfiedKey)
     }
 
     func acceptLegalDocuments() async {
@@ -105,6 +144,9 @@ final class AuthViewModel: ObservableObject {
                 )
             )
             hasCheckedLegalRequirements = true
+            if self.legalRequirements?.requiresAcceptance == false {
+                markLegalRequirementsSatisfied()
+            }
         } catch {
             legalRequirementsError = error.localizedDescription
             print("Legal acceptance error:", error)
@@ -363,6 +405,9 @@ final class AuthViewModel: ObservableObject {
     private func clearLocalSession() {
         GIDSignIn.sharedInstance.signOut()
         tokenStore.clear()
+        if let legalRequirementsSatisfiedKey {
+            defaults.removeObject(forKey: legalRequirementsSatisfiedKey)
+        }
         authUser = nil
         accessToken = nil
         refreshToken = nil

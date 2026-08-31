@@ -1776,25 +1776,14 @@ private struct ModeConfirmStartSheet: View {
                                 }
 
                                 if breakCount > 0 {
-                                    HStack(spacing: 8) {
-                                        ForEach(1 ... 5, id: \.self) { minutes in
-                                            let active = breakDurationMinutes == minutes
-                                            Button {
-                                                breakDurationMinutes = minutes
-                                            } label: {
-                                                Text("\(minutes)m")
-                                                    .font(.system(size: 14, weight: active ? .bold : .medium))
-                                                    .foregroundStyle(active ? RituoPalette.deepOceanBlue : RituoPalette.white.opacity(0.45))
-                                                    .frame(maxWidth: .infinity)
-                                                    .padding(.vertical, 10)
-                                                    .background(
-                                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                                            .fill(active ? RituoPalette.white : RituoPalette.white.opacity(0.07))
-                                                    )
-                                            }
-                                            .buttonStyle(.plain)
-                                        }
-                                    }
+                                    BreakDurationRangeSlider(
+                                        label: "DURACIÓN POR RECREO",
+                                        options: BreakDurationRangeSlider.standardOptions,
+                                        selection: $breakDurationMinutes,
+                                        tint: mode.accentColor,
+                                        labelColor: RituoPalette.white.opacity(0.30),
+                                        tickColor: RituoPalette.white.opacity(0.35)
+                                    )
                                     .transition(.move(edge: .top).combined(with: .opacity))
                                 }
                             }

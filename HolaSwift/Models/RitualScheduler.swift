@@ -64,7 +64,7 @@ struct RitualScheduler: Identifiable, Hashable, Codable {
         self.blockAppInstallation = blockAppInstallation
         self.blockAdultContent = blockAdultContent
         self.breakCount = max(0, min(3, breakCount))
-        self.breakDurationMinutes = max(1, min(5, breakDurationMinutes))
+        self.breakDurationMinutes = max(1, min(15, breakDurationMinutes))
     }
 
     var durationMinutes: Int {

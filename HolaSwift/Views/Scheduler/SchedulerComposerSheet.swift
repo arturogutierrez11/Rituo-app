@@ -213,10 +213,15 @@ struct SchedulerComposerSheet: View {
 
                                 breakPillRow(label: "CANTIDAD", values: Array(0 ... 3), suffix: "", selection: $breakCount)
 
-                                breakPillRow(label: "DURACIÓN POR RECREO", values: Array(1 ... 5), suffix: "m", selection: $breakDurationMinutes)
-                                    .opacity(breakCount > 0 ? 1 : 0.35)
-                                    .disabled(breakCount == 0)
-                                    .animation(.easeInOut(duration: 0.18), value: breakCount)
+                                BreakDurationRangeSlider(
+                                    label: "DURACIÓN POR RECREO",
+                                    options: BreakDurationRangeSlider.standardOptions,
+                                    selection: $breakDurationMinutes,
+                                    tint: RituoPalette.lightBlue
+                                )
+                                .opacity(breakCount > 0 ? 1 : 0.35)
+                                .disabled(breakCount == 0)
+                                .animation(.easeInOut(duration: 0.18), value: breakCount)
                             }
                         }
 
@@ -720,6 +725,72 @@ struct SchedulerComposerSheet: View {
     }
 
     private static let twentyFourHourLocale = Locale(identifier: "en_GB")
+}
+
+/// Native range input snapped to a fixed set of non-uniform values (e.g.
+/// 1/3/5/10/15 minutes) — dragged by index into `options`, not a continuous
+/// value, since the gaps between the allowed durations aren't even. Shared
+/// between the ritual composer and the mode start sheet.
+struct BreakDurationRangeSlider: View {
+    static let standardOptions = [1, 3, 5, 10, 15]
+
+    let label: String
+    let options: [Int]
+    let selection: Binding<Int>
+    var tint: Color = RituoPalette.lightBlue
+    var labelColor: Color = RituoPalette.white.opacity(0.28)
+    var tickColor: Color = RituoPalette.white.opacity(0.30)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(label)
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(1.2)
+                    .foregroundStyle(labelColor)
+                Spacer()
+                Text("\(selection.wrappedValue) min")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(tint)
+                    .contentTransition(.numericText())
+            }
+
+            Slider(
+                value: Binding(
+                    get: { Double(Self.nearestIndex(for: selection.wrappedValue, in: options)) },
+                    set: { newValue in
+                        let index = min(max(Int(newValue.rounded()), 0), options.count - 1)
+                        selection.wrappedValue = options[index]
+                    }
+                ),
+                in: 0 ... Double(options.count - 1),
+                step: 1
+            )
+            .tint(tint)
+
+            HStack {
+                ForEach(options, id: \.self) { option in
+                    Text("\(option)m")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(tickColor)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+        }
+    }
+
+    private static func nearestIndex(for value: Int, in options: [Int]) -> Int {
+        var bestIndex = 0
+        var bestDiff = Int.max
+        for (index, option) in options.enumerated() {
+            let diff = abs(option - value)
+            if diff < bestDiff {
+                bestDiff = diff
+                bestIndex = index
+            }
+        }
+        return bestIndex
+    }
 }
 
 struct SchedulerFormCard<Content: View>: View {
