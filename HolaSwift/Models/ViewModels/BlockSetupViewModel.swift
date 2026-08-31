@@ -188,6 +188,7 @@ final class BlockSetupViewModel: ObservableObject {
     private let modeBreakUntilKey = "rituo.modeBreakUntil"
     private let modeBreakUsedModeIDKey = "rituo.modeBreakUsedModeID"
     private let modeBreakUsedCountKey = "rituo.modeBreakUsedCount"
+    private let modeBreakCycleStartedAtKey = "rituo.modeBreakCycleStartedAt"
     private let ritualBreakUntilKey = "rituo.ritualBreakUntil"
     private let ritualBreakUsedSchedulerIDKey = "rituo.ritualBreakUsedSchedulerID"
     private let ritualBreakUsedCountKey = "rituo.ritualBreakUsedCount"
@@ -365,6 +366,7 @@ final class BlockSetupViewModel: ObservableObject {
         defaults.removeObject(forKey: pendingCoreModeSessionFinishKey)
         defaults.removeObject(forKey: modeBreakUntilKey)
         defaults.removeObject(forKey: modeBreakUsedModeIDKey)
+        defaults.removeObject(forKey: modeBreakCycleStartedAtKey)
 
         activeAccessToken = nil
         activeAccountID = nil
@@ -474,6 +476,7 @@ final class BlockSetupViewModel: ObservableObject {
         defaults.removeObject(forKey: pendingCoreModeSessionFinishKey)
         defaults.removeObject(forKey: modeBreakUntilKey)
         defaults.removeObject(forKey: modeBreakUsedModeIDKey)
+        defaults.removeObject(forKey: modeBreakCycleStartedAtKey)
 
         let appGroupIdentifier = "group.io.rituo.app"
         UserDefaults(suiteName: appGroupIdentifier)?
@@ -1901,7 +1904,7 @@ final class BlockSetupViewModel: ObservableObject {
         }
 
         guard modeBreakUsesRemaining > 0 else {
-            modeMessage = "Ya usaste todos los recreos de este modo. Para tener más, terminá el modo y volvé a iniciarlo."
+            modeMessage = "Ya usaste todos los recreos de este modo. Se renuevan a la medianoche, o podés terminar el modo y volver a iniciarlo para tener recreos frescos ahora."
             return
         }
 
@@ -4242,6 +4245,9 @@ final class BlockSetupViewModel: ObservableObject {
             guard let self else { return }
             Task { @MainActor in
                 self.refreshScheduledRitualState()
+                if self.currentBlockingMode != nil {
+                    self.renewModeBreakUsageIfNeeded()
+                }
             }
         }
     }
@@ -4939,6 +4945,7 @@ final class BlockSetupViewModel: ObservableObject {
         modeBreakUsedCount = 0
         defaults.removeObject(forKey: modeBreakUsedModeIDKey)
         defaults.removeObject(forKey: modeBreakUsedCountKey)
+        defaults.set(Date.now, forKey: modeBreakCycleStartedAtKey)
     }
 
     private func restoreModeBreakUsage(for mode: FocusMode) {
@@ -4946,6 +4953,30 @@ final class BlockSetupViewModel: ObservableObject {
         modeBreakUsedCount = usedModeID == mode.id
             ? defaults.integer(forKey: modeBreakUsedCountKey)
             : 0
+        renewModeBreakUsageIfNeeded()
+    }
+
+    /// Modes have no natural end, so without this a mode left running past
+    /// midnight would permanently exhaust its breaks. Renews at the calendar
+    /// day boundary (not "24h since last use") — called on restore and on
+    /// the periodic schedule-state timer while a mode is active, so the
+    /// renewal lands within ~15s of midnight either way.
+    private func renewModeBreakUsageIfNeeded() {
+        guard let cycleStart = defaults.object(forKey: modeBreakCycleStartedAtKey) as? Date else {
+            defaults.set(Date.now, forKey: modeBreakCycleStartedAtKey)
+            return
+        }
+
+        guard !Calendar.current.isDate(cycleStart, inSameDayAs: .now) else { return }
+
+        modeBreakUsedCount = 0
+        defaults.removeObject(forKey: modeBreakUsedModeIDKey)
+        defaults.removeObject(forKey: modeBreakUsedCountKey)
+        defaults.set(Date.now, forKey: modeBreakCycleStartedAtKey)
+
+        if let mode = currentBlockingMode {
+            deviceActivityDebugStore.log("Recreos de \(mode.title) renovados (nuevo día).")
+        }
     }
 
     private func updateModeBreakRemainingText(until breakUntil: Date) {
