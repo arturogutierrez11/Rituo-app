@@ -1122,12 +1122,8 @@ final class BlockSetupViewModel: ObservableObject {
             ) else { continue }
 
             guard let index = modes.firstIndex(where: { $0.id == localID }) else { continue }
-            let before = modes[index].breakCount
             modes[index].breakCount = config.breakCount
             modes[index].breakDurationMinutes = config.breakDurationMinutes
-            if before != config.breakCount {
-                deviceActivityDebugStore.log("🍵 GET mode breaks \(localID): local was \(before), server says \(config.breakCount) min=\(config.breakDurationMinutes) — overwriting local")
-            }
         }
         if let accountID = activeAccountID {
             modeStore.save(modes, accountID: accountID)
@@ -1148,16 +1144,15 @@ final class BlockSetupViewModel: ObservableObject {
     ) async {
         guard let scheduler = schedulers.first(where: { $0.id == localSchedulerID }) else { return }
         do {
-            let saved = try await coreApi.saveRitualBreakConfig(
+            _ = try await coreApi.saveRitualBreakConfig(
                 accessToken: accessToken,
                 ritualId: coreRitualID,
                 body: scheduler.breakConfigRequest()
             )
-            deviceActivityDebugStore.log("🍵 POST ritual breaks \(scheduler.title) ok count=\(saved.breakCount) min=\(saved.breakDurationMinutes)")
             removeQueuedRitualBreakConfig(localSchedulerID)
         } catch {
             deviceActivityDebugStore.log(
-                "🍵 POST ritual breaks \(scheduler.title) FAILED, queued for retry: \(error.localizedDescription)"
+                "No se pudieron sincronizar los recreos de \(scheduler.title): \(error.localizedDescription)"
             )
             queueRitualBreakConfig(localSchedulerID: localSchedulerID, coreRitualID: coreRitualID)
         }
@@ -1170,16 +1165,15 @@ final class BlockSetupViewModel: ObservableObject {
     ) async {
         guard let mode = modes.first(where: { $0.id == localModeID }) else { return }
         do {
-            let saved = try await coreApi.saveModeBreakConfig(
+            _ = try await coreApi.saveModeBreakConfig(
                 accessToken: accessToken,
                 modeId: coreModeID,
                 body: mode.breakConfigRequest()
             )
-            deviceActivityDebugStore.log("🍵 POST mode breaks \(mode.title) ok count=\(saved.breakCount) min=\(saved.breakDurationMinutes)")
             removeQueuedModeBreakConfig(localModeID)
         } catch {
             deviceActivityDebugStore.log(
-                "🍵 POST mode breaks \(mode.title) FAILED, queued for retry: \(error.localizedDescription)"
+                "No se pudieron sincronizar los recreos de \(mode.title): \(error.localizedDescription)"
             )
             queueModeBreakConfig(localModeID: localModeID, coreModeID: coreModeID)
         }
@@ -1267,7 +1261,6 @@ final class BlockSetupViewModel: ObservableObject {
                 syncOutbox.remove(id: operation.id)
                 continue
             }
-            deviceActivityDebugStore.log("🍵 retrying queued mode breaks sync for \(pending.localModeID)")
             syncOutbox.markSyncing(id: operation.id)
             await syncModeBreakConfig(
                 coreModeID: pending.coreModeID,
@@ -4394,7 +4387,7 @@ final class BlockSetupViewModel: ObservableObject {
     }
 
     func refreshDeviceActivityDebugEvents() {
-        deviceActivityDebugEvents = deviceActivityDebugStore.latestEvents(limit: 24)
+        deviceActivityDebugEvents = deviceActivityDebugStore.latestEvents()
     }
 
     func clearDeviceActivityDebugEvents() {
