@@ -9,6 +9,8 @@ enum SyncOperationType: String {
     case createRitualConfiguration
     case updateRitualConfiguration
     case deleteRitual
+    case syncModeBreakConfig
+    case syncRitualBreakConfig
 }
 
 enum SyncOperationStatus: String {

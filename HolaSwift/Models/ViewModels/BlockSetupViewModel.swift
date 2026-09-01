@@ -63,6 +63,21 @@ final class BlockSetupViewModel: ObservableObject {
         let coreRitualID: String
     }
 
+    /// Break config lives on its own endpoint, separate from the mode/ritual
+    /// update itself — these queue that POST so a failed attempt (network
+    /// blip, momentary server error) gets retried on the next sync pass
+    /// instead of silently leaving the backend out of sync with what the
+    /// user configured locally.
+    private struct PendingModeBreakConfig: Codable {
+        let localModeID: String
+        let coreModeID: String
+    }
+
+    private struct PendingRitualBreakConfig: Codable {
+        let localSchedulerID: UUID
+        let coreRitualID: String
+    }
+
     private enum BlockSource {
         case manual
         case scheduled(UUID)
@@ -813,6 +828,14 @@ final class BlockSetupViewModel: ObservableObject {
             userID: userID,
             accessToken: accessToken
         )
+        await syncPendingModeBreakConfigs(
+            userID: userID,
+            accessToken: accessToken
+        )
+        await syncPendingRitualBreakConfigs(
+            userID: userID,
+            accessToken: accessToken
+        )
         scheduleConfigurationOutboxRetry(
             userID: userID,
             accessToken: accessToken
@@ -1099,8 +1122,12 @@ final class BlockSetupViewModel: ObservableObject {
             ) else { continue }
 
             guard let index = modes.firstIndex(where: { $0.id == localID }) else { continue }
+            let before = modes[index].breakCount
             modes[index].breakCount = config.breakCount
             modes[index].breakDurationMinutes = config.breakDurationMinutes
+            if before != config.breakCount {
+                deviceActivityDebugStore.log("🍵 GET mode breaks \(localID): local was \(before), server says \(config.breakCount) min=\(config.breakDurationMinutes) — overwriting local")
+            }
         }
         if let accountID = activeAccountID {
             modeStore.save(modes, accountID: accountID)
@@ -1110,6 +1137,10 @@ final class BlockSetupViewModel: ObservableObject {
     /// Break config lives on its own endpoint (`/rituals/:id/breaks`), separate from
     /// the ritual's own create/update — this best-effort-syncs it right after the
     /// ritual itself synced, without failing the whole ritual sync if it errors.
+    /// On failure it queues a retry instead of just logging — otherwise a single
+    /// transient failure leaves the backend permanently out of sync with what the
+    /// user configured, and the next `loadRitualBreakConfigs` GET silently
+    /// overwrites the correct local value with the stale server one.
     private func syncRitualBreakConfig(
         coreRitualID: String,
         localSchedulerID: UUID,
@@ -1117,15 +1148,18 @@ final class BlockSetupViewModel: ObservableObject {
     ) async {
         guard let scheduler = schedulers.first(where: { $0.id == localSchedulerID }) else { return }
         do {
-            _ = try await coreApi.saveRitualBreakConfig(
+            let saved = try await coreApi.saveRitualBreakConfig(
                 accessToken: accessToken,
                 ritualId: coreRitualID,
                 body: scheduler.breakConfigRequest()
             )
+            deviceActivityDebugStore.log("🍵 POST ritual breaks \(scheduler.title) ok count=\(saved.breakCount) min=\(saved.breakDurationMinutes)")
+            removeQueuedRitualBreakConfig(localSchedulerID)
         } catch {
             deviceActivityDebugStore.log(
-                "No se pudieron sincronizar los recreos de \(scheduler.title): \(error.localizedDescription)"
+                "🍵 POST ritual breaks \(scheduler.title) FAILED, queued for retry: \(error.localizedDescription)"
             )
+            queueRitualBreakConfig(localSchedulerID: localSchedulerID, coreRitualID: coreRitualID)
         }
     }
 
@@ -1136,14 +1170,109 @@ final class BlockSetupViewModel: ObservableObject {
     ) async {
         guard let mode = modes.first(where: { $0.id == localModeID }) else { return }
         do {
-            _ = try await coreApi.saveModeBreakConfig(
+            let saved = try await coreApi.saveModeBreakConfig(
                 accessToken: accessToken,
                 modeId: coreModeID,
                 body: mode.breakConfigRequest()
             )
+            deviceActivityDebugStore.log("🍵 POST mode breaks \(mode.title) ok count=\(saved.breakCount) min=\(saved.breakDurationMinutes)")
+            removeQueuedModeBreakConfig(localModeID)
         } catch {
             deviceActivityDebugStore.log(
-                "No se pudieron sincronizar los recreos de \(mode.title): \(error.localizedDescription)"
+                "🍵 POST mode breaks \(mode.title) FAILED, queued for retry: \(error.localizedDescription)"
+            )
+            queueModeBreakConfig(localModeID: localModeID, coreModeID: coreModeID)
+        }
+    }
+
+    private func queueRitualBreakConfig(localSchedulerID: UUID, coreRitualID: String) {
+        guard let userID = activeAccountID else { return }
+        let operationID = Self.scopedSyncOperationID(
+            userID: userID,
+            type: .syncRitualBreakConfig,
+            scope: localSchedulerID.uuidString
+        )
+        let payload = PendingRitualBreakConfig(localSchedulerID: localSchedulerID, coreRitualID: coreRitualID)
+        guard let data = try? JSONEncoder().encode(payload) else { return }
+        try? syncOutbox.upsertScoped(id: operationID, userID: userID, type: .syncRitualBreakConfig, payload: data)
+        refreshSyncOutboxStatus()
+    }
+
+    private func removeQueuedRitualBreakConfig(_ localSchedulerID: UUID) {
+        guard let userID = activeAccountID else { return }
+        let operationID = Self.scopedSyncOperationID(
+            userID: userID,
+            type: .syncRitualBreakConfig,
+            scope: localSchedulerID.uuidString
+        )
+        syncOutbox.remove(id: operationID)
+        refreshSyncOutboxStatus()
+    }
+
+    private func queueModeBreakConfig(localModeID: String, coreModeID: String) {
+        guard let userID = activeAccountID else { return }
+        let operationID = Self.scopedSyncOperationID(
+            userID: userID,
+            type: .syncModeBreakConfig,
+            scope: localModeID
+        )
+        let payload = PendingModeBreakConfig(localModeID: localModeID, coreModeID: coreModeID)
+        guard let data = try? JSONEncoder().encode(payload) else { return }
+        try? syncOutbox.upsertScoped(id: operationID, userID: userID, type: .syncModeBreakConfig, payload: data)
+        refreshSyncOutboxStatus()
+    }
+
+    private func removeQueuedModeBreakConfig(_ localModeID: String) {
+        guard let userID = activeAccountID else { return }
+        let operationID = Self.scopedSyncOperationID(
+            userID: userID,
+            type: .syncModeBreakConfig,
+            scope: localModeID
+        )
+        syncOutbox.remove(id: operationID)
+        refreshSyncOutboxStatus()
+    }
+
+    /// Retries any break-config POSTs that failed earlier — re-reads the
+    /// *current* breakCount/breakDurationMinutes rather than trusting a
+    /// stale snapshot, so a later edit is what actually gets synced.
+    private func syncPendingRitualBreakConfigs(userID: String, accessToken: String) async {
+        let operations = syncOutbox.operations(userID: userID, type: .syncRitualBreakConfig)
+        for operation in operations where syncOutbox.isDue(id: operation.id) {
+            guard let pending = try? JSONDecoder().decode(PendingRitualBreakConfig.self, from: operation.payload) else {
+                syncOutbox.remove(id: operation.id)
+                continue
+            }
+            guard schedulers.contains(where: { $0.id == pending.localSchedulerID }) else {
+                syncOutbox.remove(id: operation.id)
+                continue
+            }
+            syncOutbox.markSyncing(id: operation.id)
+            await syncRitualBreakConfig(
+                coreRitualID: pending.coreRitualID,
+                localSchedulerID: pending.localSchedulerID,
+                accessToken: accessToken
+            )
+        }
+    }
+
+    private func syncPendingModeBreakConfigs(userID: String, accessToken: String) async {
+        let operations = syncOutbox.operations(userID: userID, type: .syncModeBreakConfig)
+        for operation in operations where syncOutbox.isDue(id: operation.id) {
+            guard let pending = try? JSONDecoder().decode(PendingModeBreakConfig.self, from: operation.payload) else {
+                syncOutbox.remove(id: operation.id)
+                continue
+            }
+            guard modes.contains(where: { $0.id == pending.localModeID }) else {
+                syncOutbox.remove(id: operation.id)
+                continue
+            }
+            deviceActivityDebugStore.log("🍵 retrying queued mode breaks sync for \(pending.localModeID)")
+            syncOutbox.markSyncing(id: operation.id)
+            await syncModeBreakConfig(
+                coreModeID: pending.coreModeID,
+                localModeID: pending.localModeID,
+                accessToken: accessToken
             )
         }
     }
@@ -1223,7 +1352,19 @@ final class BlockSetupViewModel: ObservableObject {
             ),
             syncOutbox.nextRetryDate(
                 userID: userID,
+                type: .updateRitualConfiguration
+            ),
+            syncOutbox.nextRetryDate(
+                userID: userID,
                 type: .deleteRitual
+            ),
+            syncOutbox.nextRetryDate(
+                userID: userID,
+                type: .syncModeBreakConfig
+            ),
+            syncOutbox.nextRetryDate(
+                userID: userID,
+                type: .syncRitualBreakConfig
             )
         ].compactMap { $0 }
         guard let retryDate = retryDates.min() else { return }
@@ -4253,7 +4394,7 @@ final class BlockSetupViewModel: ObservableObject {
     }
 
     func refreshDeviceActivityDebugEvents() {
-        deviceActivityDebugEvents = deviceActivityDebugStore.latestEvents()
+        deviceActivityDebugEvents = deviceActivityDebugStore.latestEvents(limit: 24)
     }
 
     func clearDeviceActivityDebugEvents() {
