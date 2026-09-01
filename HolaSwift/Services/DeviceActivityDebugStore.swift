@@ -15,7 +15,7 @@ struct DeviceActivityDebugStore {
 
         var events = defaults.stringArray(forKey: Self.eventsKey) ?? []
         events.insert("\(Self.timestamp())  \(message)", at: 0)
-        defaults.set(Array(events.prefix(24)), forKey: Self.eventsKey)
+        defaults.set(Array(events.prefix(60)), forKey: Self.eventsKey)
     }
 
     func latestEvents(limit: Int = 8) -> [String] {
