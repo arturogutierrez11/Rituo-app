@@ -12,7 +12,6 @@ struct ProfilePage: View {
     @State private var settingsScrollAnchor: ProfileSettingsSection?
     @State private var appeared = false
     @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
-    @State private var isBreakDebugLogPresented = false
     private let notificationService = RitualNotificationService()
 
     var body: some View {
@@ -107,9 +106,6 @@ struct ProfilePage: View {
                 authViewModel: authViewModel,
                 scrollAnchor: settingsScrollAnchor
             )
-        }
-        .sheet(isPresented: $isBreakDebugLogPresented) {
-            BreakDebugLogView(events: viewModel.deviceActivityDebugEvents)
         }
     }
 
@@ -287,18 +283,6 @@ struct ProfilePage: View {
                 profileStatusRow(symbol: "tag", label: "Tag NFC",
                                  value: viewModel.nfcTagStatusText,
                                  isOn: viewModel.hasClaimedNfcTag)
-                profileRowDivider
-                Button {
-                    viewModel.refreshDeviceActivityDebugEvents()
-                    isBreakDebugLogPresented = true
-                } label: {
-                    profileLinkRowFn(
-                        symbol: "ladybug",
-                        label: "Debug recreos",
-                        detail: "Ver logs"
-                    )
-                }
-                .buttonStyle(.plain)
                 profileRowDivider
                 if viewModel.failedSyncCount > 0 {
                     Button {
@@ -1001,38 +985,4 @@ struct AuthAccountPanel: View {
     @ObservedObject var authViewModel: AuthViewModel
     var showsDiagnostics = true
     var body: some View { EmptyView() }
-}
-
-/// Temporary: shows the persisted debug log so we can trace the recreos bug
-/// across app kill/relaunch and background/foreground cycles.
-struct BreakDebugLogView: View {
-    let events: [String]
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
-                    if events.isEmpty {
-                        Text("Sin eventos todavía.")
-                            .foregroundStyle(.secondary)
-                    }
-                    ForEach(events, id: \.self) { event in
-                        Text(event)
-                            .font(.system(size: 12, design: .monospaced))
-                            .textSelection(.enabled)
-                    }
-                }
-                .padding()
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .navigationTitle("Debug recreos")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Listo") { dismiss() }
-                }
-            }
-        }
-    }
 }

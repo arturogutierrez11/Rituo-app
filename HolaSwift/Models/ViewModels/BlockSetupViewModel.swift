@@ -172,7 +172,6 @@ final class BlockSetupViewModel: ObservableObject {
     private var delayedModeShieldClearTasks: [Task<Void, Never>] = []
     private var countdownTimer: Timer?
     private var scheduleStateTimer: Timer?
-    private var lastLoggedActiveModeBreakCount: Int?
     private var ritualOutboxRetryTask: Task<Void, Never>?
     private var modeOutboxRetryTask: Task<Void, Never>?
     private var scheduledRitualOutboxRetryTask: Task<Void, Never>?
@@ -1123,9 +1122,6 @@ final class BlockSetupViewModel: ObservableObject {
             ) else { continue }
 
             guard let index = modes.firstIndex(where: { $0.id == localID }) else { continue }
-            if modes[index].breakCount != config.breakCount {
-                deviceActivityDebugStore.log("🍵 GET \(localID) breaks: local=\(modes[index].breakCount) server=\(config.breakCount) min=\(config.breakDurationMinutes) -> applying server value")
-            }
             modes[index].breakCount = config.breakCount
             modes[index].breakDurationMinutes = config.breakDurationMinutes
         }
@@ -1169,16 +1165,15 @@ final class BlockSetupViewModel: ObservableObject {
     ) async {
         guard let mode = modes.first(where: { $0.id == localModeID }) else { return }
         do {
-            let saved = try await coreApi.saveModeBreakConfig(
+            _ = try await coreApi.saveModeBreakConfig(
                 accessToken: accessToken,
                 modeId: coreModeID,
                 body: mode.breakConfigRequest()
             )
-            deviceActivityDebugStore.log("🍵 POST \(localModeID) breaks sent=\(mode.breakCount) echo=\(saved.breakCount) min=\(saved.breakDurationMinutes)")
             removeQueuedModeBreakConfig(localModeID)
         } catch {
             deviceActivityDebugStore.log(
-                "🍵 POST \(localModeID) breaks FAILED (queued): \(error.localizedDescription)"
+                "No se pudieron sincronizar los recreos de \(mode.title): \(error.localizedDescription)"
             )
             queueModeBreakConfig(localModeID: localModeID, coreModeID: coreModeID)
         }
@@ -4384,21 +4379,15 @@ final class BlockSetupViewModel: ObservableObject {
             guard let self else { return }
             Task { @MainActor in
                 self.refreshScheduledRitualState()
-                if let mode = self.currentBlockingMode {
+                if self.currentBlockingMode != nil {
                     self.renewModeBreakUsageIfNeeded()
-                    if mode.breakCount != self.lastLoggedActiveModeBreakCount {
-                        self.deviceActivityDebugStore.log("🍵 watchdog \(mode.title) breakCount=\(mode.breakCount) min=\(mode.breakDurationMinutes) (was \(self.lastLoggedActiveModeBreakCount.map(String.init) ?? "nil"))")
-                        self.lastLoggedActiveModeBreakCount = mode.breakCount
-                    }
-                } else {
-                    self.lastLoggedActiveModeBreakCount = nil
                 }
             }
         }
     }
 
     func refreshDeviceActivityDebugEvents() {
-        deviceActivityDebugEvents = deviceActivityDebugStore.latestEvents(limit: 60)
+        deviceActivityDebugEvents = deviceActivityDebugStore.latestEvents()
     }
 
     func clearDeviceActivityDebugEvents() {
