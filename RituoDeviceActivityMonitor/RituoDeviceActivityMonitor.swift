@@ -67,8 +67,11 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
         }
 
         if isHeartbeatActivity(activity) {
-            debugStore.log("Latido de bloqueo disparado \(activity.rawValue).")
-            reconcileActiveRitualShield()
+            // Only the interval's *end* (~2h later) means the heartbeat actually
+            // elapsed. Reconciling here too would immediately reschedule another
+            // "start now" heartbeat, which fires again instantly — a busy loop
+            // that keeps reapplying the mode shield and defeats active breaks.
+            debugStore.log("Latido de bloqueo armado \(activity.rawValue).")
             return
         }
 
@@ -127,6 +130,12 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
 
         if isModeEndActivity(activity) {
             finishModeEndActivity(activity)
+            return
+        }
+
+        if isHeartbeatActivity(activity) {
+            debugStore.log("Latido de bloqueo disparado \(activity.rawValue).")
+            reconcileActiveRitualShield()
             return
         }
 
@@ -354,6 +363,16 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
                 snapshot.blockAppInstallation ||
                 snapshot.blockAdultContent else {
             return false
+        }
+
+        guard !suppressionStore.isModeBreakActive() else {
+            // A break is in progress: this mode is still the one that
+            // should resume once the break ends, but the shield must stay
+            // lifted until then — reapplying it here would defeat the break.
+            debugStore.log(
+                "Modo \(snapshot.title) en recreo; no se reaplica el shield."
+            )
+            return true
         }
 
         applyMode(

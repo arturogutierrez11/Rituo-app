@@ -188,9 +188,9 @@ struct ProtectionOnboardingView: View {
                     isRequired: false
                 )
 
-                informationCard(
+                pathInstructionCard(
                     symbol: "gearshape.fill",
-                    text: "En Ajustes, buscá Safari → Extensiones → rituo y activala. Después volvé y verificaremos el estado."
+                    text: "Activala en Ajustes → Safari → Extensiones → rituo → Sí."
                 )
             }
 
@@ -419,6 +419,33 @@ struct ProtectionOnboardingView: View {
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(RituoPalette.white.opacity(0.045))
+        )
+    }
+
+    private func pathInstructionCard(symbol: String, text: String) -> some View {
+        HStack(alignment: .center, spacing: 11) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(RituoPalette.deepOceanBlue)
+                .frame(width: 26, height: 26)
+                .background(Circle().fill(RituoPalette.lightBlue))
+
+            Text(text)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(RituoPalette.white)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(RituoPalette.lightBlue.opacity(0.14))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(RituoPalette.lightBlue.opacity(0.35), lineWidth: 1)
+                }
         )
     }
 

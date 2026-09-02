@@ -28,6 +28,10 @@ struct SharedRitualSuppressionStore {
         return name
     }
 
+    func isModeBreakActive() -> Bool {
+        defaults?.string(forKey: Self.modeBreakActivityNameKey) != nil
+    }
+
     func setRitualBreakActivityName(_ name: String?) {
         if let name {
             defaults?.set(name, forKey: Self.ritualBreakActivityNameKey)
