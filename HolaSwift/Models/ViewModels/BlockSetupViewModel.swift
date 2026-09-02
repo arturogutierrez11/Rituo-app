@@ -149,6 +149,7 @@ final class BlockSetupViewModel: ObservableObject {
     private let modeBreakActivityScheduler = ModeBreakActivityScheduler()
     private let ritualBreakActivityScheduler = RitualBreakActivityScheduler()
     private let modeEndActivityScheduler = ModeEndActivityScheduler()
+    private let heartbeatScheduler = BlockingHeartbeatScheduler()
     private let deviceActivityDebugStore = DeviceActivityDebugStore()
     private let activityEventStore = SharedRitualActivityEventStore()
     private let sharedSuppressionStore = SharedRitualSuppressionStore()
@@ -366,6 +367,7 @@ final class BlockSetupViewModel: ObservableObject {
         deviceActivityScheduler.clearAll()
         modeBreakActivityScheduler.cancelCurrent()
         modeEndActivityScheduler.cancelCurrent()
+        heartbeatScheduler.cancelCurrent()
         notificationService.clearAll()
         blocker.clearAllShields()
         blocker.clearAllStrictModeRestrictions()
@@ -461,6 +463,7 @@ final class BlockSetupViewModel: ObservableObject {
         countdownTimer?.invalidate()
         modeBreakTask?.cancel()
         modeBreakActivityScheduler.cancelCurrent()
+        heartbeatScheduler.cancelCurrent()
 
         deviceActivityScheduler.clearAll()
         notificationService.clearAll()
@@ -2466,6 +2469,7 @@ final class BlockSetupViewModel: ObservableObject {
         )
         isBlocking = true
         activeBlockSource = .manual
+        heartbeatScheduler.scheduleIfNeeded()
         reconcileInteractiveStrictModeRestriction()
         clearRitualBreakState()
         resetRitualBreakUsage()
@@ -2598,6 +2602,7 @@ final class BlockSetupViewModel: ObservableObject {
         isBlocking = true
         activeBlockSource = .mode(modeToStart.id)
         activeModeAccountID = accountID
+        heartbeatScheduler.scheduleIfNeeded()
         reconcileInteractiveStrictModeRestriction()
         blockedUntil = modeEndDate
         updateRemainingTime()
@@ -3109,6 +3114,7 @@ final class BlockSetupViewModel: ObservableObject {
         blocker.clearAllShields()
         blocker.clearAllStrictModeRestrictions()
         modeEndActivityScheduler.cancelCurrent()
+        heartbeatScheduler.cancelCurrent()
         sharedSuppressionStore.setModeActive(false)
         activeModeSnapshotStore.clear()
         modeStore.clearActiveMode()
@@ -3159,6 +3165,7 @@ final class BlockSetupViewModel: ObservableObject {
 
         unblockTask?.cancel()
         countdownTimer?.invalidate()
+        heartbeatScheduler.cancelCurrent()
 
         if shouldSuppressScheduledBlock(source: source, endSource: endSource, scheduler: scheduler) {
             suppressCurrentScheduledBlockIfNeeded(scheduler: scheduler, endSource: endSource)
@@ -4289,6 +4296,7 @@ final class BlockSetupViewModel: ObservableObject {
         let scheduler = activeSchedulerForCurrentBlock()
         let source = activeBlockSource
         queueCoreSessionFinish(status: "completed", endSource: "timer", scheduler: scheduler)
+        heartbeatScheduler.cancelCurrent()
         clearActiveShield()
         if case .scheduled = source {
             // The scheduled notification already announces the end of the ritual.
@@ -4448,6 +4456,7 @@ final class BlockSetupViewModel: ObservableObject {
         isBlocking = true
         activeBlockSource = .mode(mode.id)
         activeModeAccountID = accountID
+        heartbeatScheduler.scheduleIfNeeded()
         reconcileInteractiveStrictModeRestriction()
         restoreModeEndTimerIfNeeded(for: mode)
         blockMessage = modeEndActivityScheduler.scheduledEndDate == nil
@@ -4492,6 +4501,7 @@ final class BlockSetupViewModel: ObservableObject {
         isBlocking = true
         activeBlockSource = .mode(mode.id)
         activeModeAccountID = accountID
+        heartbeatScheduler.scheduleIfNeeded()
         reconcileInteractiveStrictModeRestriction()
         restoreModeEndTimerIfNeeded(for: mode)
         modeStore.saveActiveMode(mode.id, accountID: accountID)
@@ -4534,6 +4544,7 @@ final class BlockSetupViewModel: ObservableObject {
         activeBlockSource = session.startSource == "schedule"
             ? .scheduled(scheduler.id)
             : .manual
+        heartbeatScheduler.scheduleIfNeeded()
         reconcileInteractiveStrictModeRestriction()
         blockedUntil = Self.parseISODate(session.plannedEndAt)
         updateRemainingTime()
@@ -4547,6 +4558,7 @@ final class BlockSetupViewModel: ObservableObject {
     }
 
     private func clearStaleServerBackedLocalState() {
+        heartbeatScheduler.cancelCurrent()
         if case .mode = activeBlockSource {
             modeEndActivityScheduler.cancelCurrent()
             clearActiveModeShield()

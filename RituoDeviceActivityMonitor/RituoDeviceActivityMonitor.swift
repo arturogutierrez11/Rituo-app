@@ -16,6 +16,8 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
     private static let modeBreakEndActivityPrefix = "rituo.modeBreakEnd."
     private static let modeEndActivityPrefix = "rituo.modeEnd."
     private static let ritualBreakEndActivityPrefix = "rituo.ritualBreakEnd."
+    private static let heartbeatActivityPrefix = "rituo.heartbeat."
+    private static let heartbeatInterval: TimeInterval = 2 * 60 * 60
 
     private struct ActiveRitualCandidate {
         let activity: SharedActiveRitualActivity
@@ -61,6 +63,12 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
 
         if isModeEndActivity(activity) {
             debugStore.log("Temporizador de modo iniciado \(activity.rawValue).")
+            return
+        }
+
+        if isHeartbeatActivity(activity) {
+            debugStore.log("Latido de bloqueo disparado \(activity.rawValue).")
+            reconcileActiveRitualShield()
             return
         }
 
@@ -171,12 +179,14 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
             clearStrictModeRestriction()
             if restorePausedModeIfPossible() {
                 debugStore.log("Modo pausado restaurado al finalizar los rituales.")
+                maintainHeartbeat(isActive: true)
                 return
             }
             if !suppressionStore.isModeActive() {
                 updateSensitiveWebContentBlocking(contextEnabled: false)
             }
             debugStore.log("Sin rituales activos; restricciones liberadas.")
+            maintainHeartbeat(isActive: false)
             return
         }
 
@@ -195,6 +205,68 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
         debugStore.log(
             "Ritual prioritario \(winner.metadata.title) aplicado items=\(itemCount) priority=\(winner.metadata.priority) active=\(candidates.count)."
         )
+        maintainHeartbeat(isActive: true)
+    }
+
+    /// Keeps a recurring DeviceActivity monitor scheduled while blocking is
+    /// active, so this extension gets woken up periodically even if the
+    /// main app never runs (e.g. after a dead-battery reboot) and can
+    /// re-apply whatever should be blocked from persisted state. Called at
+    /// every exit point of reconcileActiveRitualShield(), which already
+    /// knows whether a ritual or a restored mode ended up active.
+    private func maintainHeartbeat(isActive: Bool) {
+        guard isActive else {
+            cancelHeartbeat()
+            return
+        }
+
+        let activityName = DeviceActivityName(
+            Self.heartbeatActivityPrefix + UUID().uuidString
+        )
+        let now = Date()
+        let end = now.addingTimeInterval(Self.heartbeatInterval)
+        let calendar = Calendar.current
+        let schedule = DeviceActivitySchedule(
+            intervalStart: calendar.dateComponents(
+                [.year, .month, .day, .hour, .minute, .second],
+                from: now
+            ),
+            intervalEnd: calendar.dateComponents(
+                [.year, .month, .day, .hour, .minute, .second],
+                from: end
+            ),
+            repeats: false
+        )
+
+        if let previousName = suppressionStore.heartbeatActivityName() {
+            center.stopMonitoring([DeviceActivityName(previousName)])
+        }
+
+        do {
+            try center.startMonitoring(activityName, during: schedule)
+            suppressionStore.setHeartbeatActivityName(activityName.rawValue)
+            debugStore.log(
+                "Latido de bloqueo reprogramado \(activityName.rawValue) hasta \(end)."
+            )
+        } catch {
+            debugStore.log(
+                "No se pudo reprogramar el latido de bloqueo: \(error.localizedDescription)."
+            )
+        }
+    }
+
+    private func cancelHeartbeat() {
+        guard let storedName = suppressionStore.heartbeatActivityName() else {
+            return
+        }
+
+        center.stopMonitoring([DeviceActivityName(storedName)])
+        suppressionStore.setHeartbeatActivityName(nil)
+        debugStore.log("Latido de bloqueo cancelado \(storedName).")
+    }
+
+    private func isHeartbeatActivity(_ activity: DeviceActivityName) -> Bool {
+        activity.rawValue.hasPrefix(Self.heartbeatActivityPrefix)
     }
 
     private func applyRitualShield(

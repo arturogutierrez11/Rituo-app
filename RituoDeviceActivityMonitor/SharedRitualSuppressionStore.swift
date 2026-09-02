@@ -6,6 +6,7 @@ struct SharedRitualSuppressionStore {
     private static let modeActiveKey = "rituo.sharedModeActive"
     private static let modeBreakActivityNameKey = "rituo.sharedModeBreakActivityName"
     private static let ritualBreakActivityNameKey = "rituo.sharedRitualBreakActivityName"
+    private static let heartbeatActivityNameKey = "rituo.sharedHeartbeatActivityName"
 
     private let defaults: UserDefaults?
 
@@ -39,6 +40,18 @@ struct SharedRitualSuppressionStore {
         let name = defaults?.string(forKey: Self.ritualBreakActivityNameKey)
         defaults?.removeObject(forKey: Self.ritualBreakActivityNameKey)
         return name
+    }
+
+    func setHeartbeatActivityName(_ name: String?) {
+        if let name {
+            defaults?.set(name, forKey: Self.heartbeatActivityNameKey)
+        } else {
+            defaults?.removeObject(forKey: Self.heartbeatActivityNameKey)
+        }
+    }
+
+    func heartbeatActivityName() -> String? {
+        defaults?.string(forKey: Self.heartbeatActivityNameKey)
     }
 
     func isSuppressed(schedulerId: String, at date: Date = .now) -> Bool {
