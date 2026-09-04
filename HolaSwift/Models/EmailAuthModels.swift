@@ -4,7 +4,7 @@ struct EmailRegisterRequest: Encodable {
     let email: String
     let firstName: String
     let lastName: String
-    let dateOfBirth: String
+    let dateOfBirth: String?
     let password: String
     let passwordConfirmation: String
     let deviceId: String

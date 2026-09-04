@@ -151,7 +151,7 @@ final class AuthAPIClient {
         email: String,
         firstName: String,
         lastName: String,
-        dateOfBirth: String,
+        dateOfBirth: String?,
         password: String,
         passwordConfirmation: String,
         deviceId: String,

@@ -595,27 +595,27 @@ final class AuthViewModel: ObservableObject {
             return
         }
 
-        guard let dateOfBirth else {
-            errorMessage = "Ingresá tu fecha de nacimiento."
-            return
-        }
+        var normalizedDateOfBirth: Date?
+        if let dateOfBirth {
+            let calendar = Calendar(identifier: .gregorian)
+            let today = calendar.startOfDay(for: Date())
+            let candidate = calendar.startOfDay(for: dateOfBirth)
 
-        let calendar = Calendar(identifier: .gregorian)
-        let today = calendar.startOfDay(for: Date())
-        let normalizedDateOfBirth = calendar.startOfDay(for: dateOfBirth)
+            guard candidate <= today else {
+                errorMessage = "La fecha de nacimiento no puede ser futura."
+                return
+            }
 
-        guard normalizedDateOfBirth <= today else {
-            errorMessage = "La fecha de nacimiento no puede ser futura."
-            return
-        }
+            guard let sixteenthBirthday = calendar.date(
+                byAdding: .year,
+                value: 16,
+                to: candidate
+            ), sixteenthBirthday <= today else {
+                errorMessage = "Tenés que tener al menos 16 años para crear una cuenta."
+                return
+            }
 
-        guard let sixteenthBirthday = calendar.date(
-            byAdding: .year,
-            value: 16,
-            to: normalizedDateOfBirth
-        ), sixteenthBirthday <= today else {
-            errorMessage = "Tenés que tener al menos 16 años para crear una cuenta."
-            return
+            normalizedDateOfBirth = candidate
         }
 
         guard cleanEmail.contains("@"), cleanEmail.contains(".") else {
@@ -641,7 +641,7 @@ final class AuthViewModel: ObservableObject {
                 email: cleanEmail,
                 firstName: cleanFirstName,
                 lastName: cleanLastName,
-                dateOfBirth: Self.apiDateFormatter.string(from: normalizedDateOfBirth),
+                dateOfBirth: normalizedDateOfBirth.map(Self.apiDateFormatter.string),
                 password: password,
                 passwordConfirmation: passwordConfirmation,
                 deviceId: currentDeviceId(),

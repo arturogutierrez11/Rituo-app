@@ -804,7 +804,7 @@ struct EmailSignUpForm: View {
                         Text(
                             dateOfBirth.map {
                                 Self.displayDateFormatter.string(from: $0)
-                            } ?? "Fecha de nacimiento"
+                            } ?? "Fecha de nacimiento (opcional)"
                         )
                             .font(.system(size: 15, weight: .medium))
                             .foregroundStyle(
