@@ -1,0 +1,13 @@
+{
+  "postgres": "postgres (PostgreSQL) 17.9 (Homebrew)",
+  "results": [
+    "Private new cluster, Unix socket only; production environment excluded",
+    "Existing data unchanged by expansion",
+    "Old-client durations 1/3/5 and new 10/15 accepted; 0/16 and four breaks rejected",
+    "Validation succeeds without changing rows",
+    "Repeated expansion fails safely without modifying data",
+    "Contended second table: lock timeout in 0.52s; BOTH tables rolled back to 1\u20135",
+    "Constraint validation completed with a concurrent open writer transaction"
+  ],
+  "production_access": false
+}

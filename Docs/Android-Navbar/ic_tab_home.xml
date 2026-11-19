@@ -1,0 +1,18 @@
+<!-- Android VectorDrawable del ícono "Inicio" (la "ø" de rituo). res/drawable/ic_tab_home.xml -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="28.32dp"
+    android:height="24dp"
+    android:viewportWidth="28.32"
+    android:viewportHeight="24">
+    <!-- Círculo -->
+    <path
+        android:pathData="M14.16,1.56 a10.44,10.44 0 1,1 0,20.88 a10.44,10.44 0 1,1 0,-20.88"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.12" />
+    <!-- Barra horizontal con extremos redondeados -->
+    <path
+        android:pathData="M1.56,12 L26.76,12"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.12"
+        android:strokeLineCap="round" />
+</vector>

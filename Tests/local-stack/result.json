@@ -1,0 +1,9 @@
+{
+  "production_access": false,
+  "checks": [
+    "modes: HTTP save/read 1,2,3,5,10,15; rejects 0,16,1.5",
+    "rituals: HTTP save/read 1,2,3,5,10,15; rejects 0,16,1.5"
+  ],
+  "fixture_schema": true,
+  "fixture_auth": true
+}
