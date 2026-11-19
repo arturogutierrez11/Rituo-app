@@ -112,7 +112,7 @@ struct FocusSetupPage: View {
                 )
                 heroMetricDivider
                 heroMetric(
-                    title: "Mejor día",
+                    title: "Mejor día de la semana",
                     value: bestDayText
                 )
                 heroMetricDivider
@@ -167,7 +167,7 @@ struct FocusSetupPage: View {
             Text(title)
                 .font(.system(size: 11))
                 .foregroundStyle(RituoPalette.white.opacity(0.38))
-                .lineLimit(1)
+                .lineLimit(2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

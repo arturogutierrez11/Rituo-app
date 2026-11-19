@@ -13,6 +13,10 @@ final class RankingViewModel: ObservableObject {
     }
 
     @Published private(set) var state: LoadState
+    @Published private(set) var refreshError: String?
+    @Published private(set) var isRefreshing = false
+
+    private var loadRevision = UUID()
 
     init(state: LoadState = .idle) {
         self.state = state
@@ -26,21 +30,40 @@ final class RankingViewModel: ObservableObject {
     }
 
     /// Carga el ranking. Si ya hay datos los conserva mientras refresca
-    /// (pull-to-refresh) y solo muestra el error cuando no hay nada que mostrar.
+    /// y avisa si el refresco falla. Solo la última carga puede publicar cambios.
     func load(accessToken: String) async {
+        guard !Task.isCancelled else { return }
+        let revision = UUID()
+        loadRevision = revision
+        isRefreshing = true
+        refreshError = nil
         if ranking == nil { state = .loading }
+        defer {
+            if loadRevision == revision { isRefreshing = false }
+        }
 
         do {
             let result = try await coreApi.getRanking(accessToken: accessToken)
+            try Task.checkCancellation()
+            guard loadRevision == revision else { return }
             state = .loaded(result)
         } catch is CancellationError {
+            guard loadRevision == revision else { return }
             restoreAfterCancellation()
         } catch CoreAPIError.cancelled {
+            guard loadRevision == revision else { return }
             restoreAfterCancellation()
         } catch {
+            guard loadRevision == revision else { return }
+            guard !Task.isCancelled else {
+                restoreAfterCancellation()
+                return
+            }
             AppDiagnostics.shared.event("ranking.load.failed error=\(error.localizedDescription)")
             if ranking == nil {
                 state = .failed(error.localizedDescription)
+            } else {
+                refreshError = "No pudimos actualizar el ranking."
             }
         }
     }
@@ -57,8 +80,11 @@ final class RankingViewModel: ObservableObject {
 struct RankingPage: View {
     let accessToken: String?
 
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var viewModel: RankingViewModel
     @State private var appeared = false
+    @State private var shareSnapshot: RankingShareSnapshot?
+    @State private var sharingFailed = false
 
     @MainActor
     init(accessToken: String?, viewModel: RankingViewModel? = nil) {
@@ -69,6 +95,11 @@ struct RankingPage: View {
     private let gold = Color(red: 0.99, green: 0.80, blue: 0.30)
     private let silver = Color(red: 0.80, green: 0.85, blue: 0.92)
     private let bronze = Color(red: 0.88, green: 0.58, blue: 0.38)
+
+    private struct LoadTrigger: Equatable {
+        let accessToken: String?
+        let isActive: Bool
+    }
 
     var body: some View {
         ZStack {
@@ -98,7 +129,18 @@ struct RankingPage: View {
         .onAppear {
             withAnimation(.easeOut(duration: 0.40).delay(0.05)) { appeared = true }
         }
-        .task(id: accessToken) { await reload() }
+        .task(id: LoadTrigger(accessToken: accessToken, isActive: scenePhase == .active)) {
+            guard scenePhase == .active else { return }
+            await reload()
+        }
+        .sheet(item: $shareSnapshot) { snapshot in
+            RankingSharePreview(snapshot: snapshot)
+        }
+        .alert("No pudimos preparar la imagen", isPresented: $sharingFailed) {
+            Button("Aceptar", role: .cancel) {}
+        } message: {
+            Text("Intentá compartir el ranking nuevamente.")
+        }
     }
 
     private func reload() async {
@@ -109,13 +151,32 @@ struct RankingPage: View {
     // MARK: - Header
 
     private var pageHeader: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Ranking")
-                .font(.system(size: 32, weight: .bold))
-                .foregroundStyle(RituoPalette.white)
-            Text(headerSubtitle)
-                .font(.system(size: 14))
-                .foregroundStyle(RituoPalette.white.opacity(0.42))
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Ranking")
+                    .font(.system(size: 32, weight: .bold))
+                    .foregroundStyle(RituoPalette.white)
+                Text(headerSubtitle)
+                    .font(.system(size: 14))
+                    .foregroundStyle(RituoPalette.white.opacity(0.42))
+            }
+            Spacer(minLength: 0)
+            Button {
+                guard let ranking = viewModel.ranking else { return }
+                shareSnapshot = RankingShareRenderer.snapshot(for: ranking, month: monthTitle(for: ranking))
+                sharingFailed = shareSnapshot == nil
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(RituoPalette.white)
+                    .frame(width: 46, height: 46)
+                    .background(RituoGlassCapsule(tint: .blue))
+            }
+            .buttonStyle(.plain)
+            .disabled(viewModel.ranking == nil)
+            .opacity(viewModel.ranking == nil ? 0.35 : 1)
+            .accessibilityLabel("Compartir ranking")
+            .accessibilityHint("Prepara una imagen para compartir tu posición y tiempo de foco")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -130,6 +191,18 @@ struct RankingPage: View {
 
     @ViewBuilder
     private func loadedContent(_ ranking: RankingResponse) -> some View {
+        if viewModel.isRefreshing {
+            HStack(spacing: 8) {
+                ProgressView().tint(RituoPalette.lightBlue)
+                Text("Actualizando ranking…")
+                    .font(.system(size: 13))
+                    .foregroundStyle(RituoPalette.white.opacity(0.65))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else if let message = viewModel.refreshError {
+            refreshErrorCard(message: message)
+        }
+
         myPositionCard(ranking)
 
         if ranking.entries.isEmpty {
@@ -351,6 +424,33 @@ struct RankingPage: View {
     }
 
     // MARK: - States
+
+    private func refreshErrorCard(message: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(message, systemImage: "wifi.exclamationmark")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(RituoPalette.white)
+            Text("Seguís viendo los últimos datos cargados.")
+                .font(.system(size: 13))
+                .foregroundStyle(RituoPalette.white.opacity(0.65))
+            Button {
+                Task { await reload() }
+            } label: {
+                Text("Reintentar")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(RituoPalette.white)
+                    .padding(.horizontal, 18)
+                    .frame(minHeight: 44)
+                    .background(RituoGlassCapsule(tint: .blue))
+            }
+            .buttonStyle(.plain)
+            .disabled(viewModel.isRefreshing)
+            .accessibilityLabel("Reintentar actualización del ranking")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(cardBackground)
+    }
 
     private var emptyCard: some View {
         VStack(spacing: 10) {

@@ -1,0 +1,1878 @@
+CONTEXTO INTEGRAL DE RITUO
+==========================
+
+Versión del documento: 1.0
+Fecha de corte: 12 de agosto de 2026
+Producto: Rituo
+Aplicación principal: iOS/iPadOS
+Versión comercial relevada: 1.0
+Build de distribución relevado: 40
+
+
+0. PROPÓSITO Y ALCANCE DE ESTE DOCUMENTO
+----------------------------------------
+
+Este archivo reúne, en un solo lugar, el contexto funcional, conceptual,
+técnico, operativo, legal y comercial confirmado de Rituo. Está pensado para
+servir como material de referencia para:
+
+- Desarrollo de producto y software.
+- Diseño de experiencia e interfaz.
+- Soporte y atención a usuarios.
+- Marketing, comunicación y creación de contenido.
+- Preparación de documentación y materiales para tiendas de aplicaciones.
+- Incorporación de nuevos colaboradores.
+- Dar contexto fiable a asistentes de inteligencia artificial.
+- Revisión de privacidad, permisos y cumplimiento.
+
+Las fuentes utilizadas son el código actual del proyecto iOS, sus archivos de
+configuración y la información confirmada durante la preparación de la versión
+1.0 en App Store Connect. No se agregan características imaginarias ni se
+presentan ideas futuras como si ya existieran.
+
+Cuando una afirmación depende de una fecha o de una validación externa, se la
+identifica expresamente. El estado de App Store, por ejemplo, es una fotografía
+del 12 de agosto de 2026 y puede cambiar después de esa fecha.
+
+Este documento no contiene contraseñas, tokens de sesión, claves privadas,
+credenciales de revisión, secretos de API, direcciones particulares, números de
+teléfono ni otros datos personales sensibles. Tampoco reemplaza una revisión
+legal profesional.
+
+
+1. RESUMEN EJECUTIVO
+--------------------
+
+Rituo es una aplicación de foco y bienestar digital que ayuda a una persona a
+usar el teléfono con mayor intención. Su propuesta no consiste solamente en
+medir el tiempo de pantalla ni en impedir indiscriminadamente el acceso a las
+aplicaciones. Rituo agrega un momento deliberado de decisión entre el impulso de
+abrir una distracción y la acción de hacerlo.
+
+El producto combina cinco capacidades principales:
+
+1. Modos manuales de foco.
+   La persona elige una actividad, selecciona qué aplicaciones, categorías o
+   dominios quiere restringir y activa una sesión en el momento.
+
+2. Rituales programados.
+   La persona define un nombre, días y horarios para que una protección se
+   active automáticamente de forma recurrente.
+
+3. Protección efectiva mediante las API de Screen Time de Apple.
+   Rituo usa Family Controls, Managed Settings y Device Activity para aplicar
+   restricciones reales a las selecciones definidas por el usuario.
+
+4. Fricción física opcional mediante Rituo Tag.
+   Un tag NFC puede utilizarse para proteger determinadas acciones. Según la
+   configuración elegida, el usuario debe acercar el tag físico registrado para
+   validar el desbloqueo o la finalización de una protección.
+
+5. Métricas de foco.
+   La aplicación registra sesiones y muestra tiempo de foco, sesiones
+   completadas o canceladas, rachas, evolución semanal y actividad acumulada.
+
+La experiencia se estructura alrededor de cuatro secciones principales:
+
+- Inicio.
+- Rituales.
+- Foco.
+- Perfil.
+
+Rituo admite autenticación con correo electrónico, Apple y Google. El registro
+incluye fecha de nacimiento y aceptación de documentos legales. La política de
+producto relevada establece una edad mínima de 16 años.
+
+La aplicación se comunica con servicios backend para autenticación,
+sincronización de modos y rituales, sesiones, métricas, documentos legales,
+dispositivos y operaciones relacionadas con el tag. También conserva estado
+local y cuenta con una cola de sincronización para tolerar períodos sin red.
+
+
+2. DEFINICIÓN CORTA DEL PRODUCTO
+--------------------------------
+
+Definición de una línea:
+
+Rituo es una app de foco que bloquea distracciones de forma intencional mediante
+modos manuales, rituales programados y una capa opcional de validación física
+con NFC.
+
+Definición breve:
+
+Rituo ayuda a recuperar el control sobre el uso del teléfono. Permite elegir qué
+apps, categorías y sitios web dejar fuera por un rato, activar modos de foco o
+programarlos como rituales y, de manera opcional, utilizar un Rituo Tag para que
+salir de una protección requiera una decisión física y consciente.
+
+Descripción funcional:
+
+La persona configura las distracciones que quiere limitar, elige la actividad
+que va a realizar y activa una protección. Mientras esa protección está activa,
+iOS aplica los bloqueos definidos. El usuario puede tomar un recreo controlado,
+finalizar el modo según las reglas configuradas y consultar posteriormente sus
+métricas de foco. Los rituales permiten automatizar esta misma lógica en días y
+horarios recurrentes.
+
+
+3. PROBLEMA QUE RITUO BUSCA RESOLVER
+------------------------------------
+
+Los teléfonos están diseñados para ofrecer acceso inmediato y repetido a
+contenido, notificaciones y recompensas variables. En ese contexto, una persona
+puede abrir una app de manera automática aunque hubiera decidido estudiar,
+trabajar, descansar, entrenar, leer o dormir.
+
+Los problemas concretos que Rituo aborda son:
+
+- Aperturas impulsivas de aplicaciones distractoras.
+- Dificultad para sostener una intención durante una actividad.
+- Dependencia exclusiva de la fuerza de voluntad.
+- Configuraciones de bienestar digital que son fáciles de desactivar.
+- Falta de separación entre diferentes contextos de la vida cotidiana.
+- Poca visibilidad sobre el tiempo de foco conseguido.
+- Automatismos nocturnos, laborales o de estudio que se repiten cada semana.
+
+La respuesta de Rituo es construir fricción útil. Esa fricción no pretende
+castigar al usuario, sino devolverle tiempo suficiente para reconocer qué está
+por hacer y decidir conscientemente si quiere continuar.
+
+
+4. PROPUESTA DE VALOR
+---------------------
+
+La propuesta de valor se apoya en los siguientes principios:
+
+- Intención antes que prohibición.
+  El usuario define sus propias reglas y puede crear configuraciones distintas
+  para cada situación.
+
+- Fricción proporcional.
+  Una sesión puede ser simple o incorporar protección estricta, bloqueo de
+  instalaciones, filtro de contenido sensible y validación NFC.
+
+- Automatización de hábitos.
+  Los rituales convierten una decisión repetitiva en una rutina programada.
+
+- Protección a nivel del sistema.
+  Los bloqueos se aplican con las capacidades oficiales de Apple, no solamente
+  mediante una pantalla superpuesta dentro de Rituo.
+
+- Objeto físico opcional.
+  El tag NFC traslada parte de la decisión fuera del teléfono. Esto incrementa
+  la distancia entre el impulso y el desbloqueo.
+
+- Visibilidad del progreso.
+  Las métricas permiten observar cuánto foco se acumuló y qué actividades
+  contribuyeron a ese resultado.
+
+- Configuración personal.
+  El usuario elige aplicaciones, categorías, dominios, horarios, días y reglas.
+
+
+5. USUARIOS Y CONTEXTOS DE USO
+------------------------------
+
+Rituo está orientado a personas de 16 años o más que quieran administrar mejor
+su atención y reducir interrupciones digitales. No está limitado a un único
+perfil profesional o académico.
+
+Contextos típicos confirmados por el producto:
+
+- Trabajo concentrado.
+- Estudio.
+- Lectura.
+- Reuniones.
+- Entrenamiento o gimnasio.
+- Descanso y sueño.
+- Inicio del día.
+- Cualquier actividad para la que el usuario cree un modo o ritual propio.
+
+Ejemplos de modos predeterminados presentes en el modelo de la aplicación:
+
+- Gimnasio.
+- Reunión.
+- Lectura.
+- Trabajar.
+- Dormir.
+
+Estos nombres son puntos de partida. El producto permite que el usuario cree o
+sincronice configuraciones adaptadas a sus necesidades.
+
+
+6. CONCEPTOS Y GLOSARIO DEL DOMINIO
+-----------------------------------
+
+Modo de foco o modo manual:
+Configuración que el usuario activa en el momento para una actividad concreta.
+Puede incluir una selección de apps, categorías y dominios, duración y opciones
+de protección.
+
+Ritual:
+Configuración de foco recurrente asociada a días de la semana y a una hora de
+inicio y finalización. Puede activarse automáticamente mediante Device Activity.
+
+Sesión:
+Ejecución concreta de un modo o ritual. Tiene un comienzo, un posible final, un
+estado y una fuente. Sirve como unidad para métricas y sincronización.
+
+Selección de Family Activity:
+Conjunto elegido por el usuario dentro del selector de Apple. Puede contener
+tokens de aplicaciones, categorías y dominios web. Apple protege la identidad
+directa de las aplicaciones seleccionadas; Rituo trabaja con los tokens que el
+sistema entrega.
+
+Bloqueo o restricción:
+Regla aplicada por Managed Settings que limita una aplicación, una categoría,
+un dominio o una capacidad del dispositivo durante la protección.
+
+Modo estricto:
+Opción de mayor fricción orientada a impedir que el usuario desactive o elimine
+fácilmente la protección mientras está activa.
+
+Contenido sensible en la web:
+Conjunto de dominios administrados por el producto para aplicar una protección
+web adicional. Esta capacidad se implementa con Managed Settings y una
+extensión de bloqueo de contenido de Safari.
+
+Rituo Tag:
+Tag físico NFC que puede registrarse y utilizarse como factor de validación para
+acciones protegidas.
+
+Recreo:
+Pausa temporal controlada durante una sesión activa. La interfaz relevada ofrece
+un recreo de cinco minutos.
+
+Desbloqueo de emergencia:
+Flujo excepcional contemplado para situaciones como olvido o pérdida del tag.
+El backend puede aplicar disponibilidad y un período de espera antes de permitir
+una nueva acción de emergencia.
+
+App Group:
+Contenedor compartido de Apple que permite que la app principal y sus
+extensiones intercambien estados necesarios para aplicar o retirar bloqueos.
+
+
+7. ESTRUCTURA GENERAL DE LA EXPERIENCIA
+---------------------------------------
+
+La navegación principal tiene cuatro pestañas.
+
+7.1. Inicio
+
+Es la pantalla operativa principal. Cuando no hay una sesión activa presenta un
+estado de disponibilidad para comenzar, con un mensaje como "Listo para
+enfocarte" y la acción "Iniciar un modo".
+
+Desde Inicio el usuario puede:
+
+- Abrir el selector de modos.
+- Revisar la actividad elegida.
+- Consultar la cantidad de bloqueos configurados.
+- Definir o confirmar la duración.
+- Activar o desactivar opciones adicionales.
+- Iniciar la protección mediante un control deslizante deliberado.
+- Ver el estado de una sesión activa.
+- Tomar un recreo cuando la configuración lo permite.
+- Finalizar el modo según sus reglas de protección.
+
+7.2. Rituales
+
+Contiene los rituales programados y sus estadísticas resumidas. Permite crear un
+nuevo ritual y definir:
+
+- Nombre.
+- Descripción o detalle.
+- Ícono o representación visual.
+- Hora de inicio.
+- Hora de finalización.
+- Días de la semana.
+- Aplicaciones, categorías y dominios a bloquear.
+- Protección adicional.
+- Uso de NFC.
+- Protección mediante contraseña cuando corresponde.
+- Modo estricto.
+- Bloqueo de instalación de apps.
+- Protección de contenido sensible.
+
+7.3. Foco
+
+Es la sección analítica. Resume el desempeño del usuario y presenta:
+
+- Tiempo total de foco.
+- Cantidad de sesiones.
+- Racha actual.
+- Promedio diario.
+- Evolución de la semana.
+- Sesiones completadas.
+- Sesiones canceladas.
+- Tiempo efectivo de foco.
+- Desglose por actividad o modo.
+
+7.4. Perfil
+
+Centraliza identidad, cuenta, configuración de protección, administración del
+tag, soporte y opciones relacionadas con la sesión del usuario. Los componentes
+del proyecto contemplan vistas específicas para:
+
+- Datos de perfil.
+- Configuración de cuenta.
+- Configuración del tag.
+- Configuración de protección.
+- Soporte.
+- Cierre de sesión.
+
+
+8. ONBOARDING, REGISTRO E INICIO DE SESIÓN
+------------------------------------------
+
+8.1. Métodos de acceso
+
+El proyecto contempla tres alternativas:
+
+- Correo electrónico y contraseña.
+- Sign in with Apple.
+- Inicio de sesión con Google.
+
+8.2. Registro por correo
+
+Los modelos de la aplicación confirman que el registro envía al servicio de
+autenticación:
+
+- Correo electrónico.
+- Nombre.
+- Apellido.
+- Fecha de nacimiento.
+- Contraseña y confirmación, transmitidas al servicio por el flujo de registro.
+- Identificador de la instalación o dispositivo de la app.
+- Etiqueta descriptiva del dispositivo cuando corresponde.
+
+La fecha de nacimiento permite aplicar la regla de edad del producto. No debe
+confundirse con la clasificación por edades de App Store: la clasificación de la
+tienda describe para qué edades es adecuada la app, mientras que la regla de
+registro determina quién puede crear una cuenta según los términos de Rituo.
+
+8.3. Edad mínima
+
+La decisión de producto confirmada para esta versión es permitir cuentas a
+partir de los 16 años. La interfaz de registro y los documentos legales deben
+permanecer consistentes con esa regla.
+
+La fecha de nacimiento es preferible a una declaración genérica de "soy mayor"
+porque permite validar de forma concreta la edad calculada en el momento del
+registro. La aceptación de términos no sustituye la validación funcional.
+
+8.4. Aceptación legal
+
+El usuario debe poder revisar y aceptar los documentos legales vigentes. El
+modelo legal distingue, como mínimo:
+
+- Términos y condiciones.
+- Política de privacidad.
+
+Cada documento puede incluir:
+
+- Identificador.
+- Versión.
+- Título.
+- Contenido.
+- Huella o hash.
+- URL de origen.
+- Fecha efectiva.
+- Estado de publicación y vigencia.
+- Fecha en que el usuario lo aceptó.
+
+La aceptación enviada al backend incluye referencias a los documentos,
+plataforma, versión de la app y configuración regional. Esto permite conservar
+trazabilidad cuando una política cambia.
+
+8.5. Incorporación a las protecciones de iOS
+
+Además de crear una cuenta, Rituo necesita guiar al usuario para autorizar Family
+Controls. Esa autorización es esencial: sin ella no se pueden aplicar las
+restricciones de Screen Time que constituyen el núcleo funcional del producto.
+
+La app incluye componentes de onboarding específicos para explicar y solicitar
+esta protección. El permiso debe pedirse con contexto suficiente y nunca
+presentarse como un acceso genérico sin explicación.
+
+
+9. MODOS MANUALES DE FOCO
+-------------------------
+
+9.1. Composición de un modo
+
+El modelo FocusMode contiene:
+
+- Identificador local.
+- Identificador del modo correspondiente en backend.
+- Título.
+- Símbolo o ícono.
+- Selección de Family Activity.
+- Indicador de protección.
+- Indicador de desbloqueo mediante NFC.
+- Indicador de modo estricto.
+- Indicador de bloqueo de instalación de apps.
+- Indicador de bloqueo de contenido sensible o adulto.
+
+9.2. Selección de distracciones
+
+El usuario puede elegir:
+
+- Aplicaciones individuales.
+- Categorías de aplicaciones.
+- Dominios web.
+
+La aplicación calcula cantidades para mostrar una síntesis en la interfaz. La
+cantidad total de reglas puede incluir, además de las selecciones, las opciones
+de instalación, contenido sensible y protección estricta.
+
+9.3. Activación
+
+El flujo observado evita una activación accidental. La persona revisa las
+condiciones y completa un gesto deslizante para comenzar. Esta decisión de
+interfaz está alineada con la idea central del producto: que los cambios de
+estado importantes sean deliberados.
+
+Al activarse un modo, la app:
+
+- Registra la selección activa.
+- Prepara el estado compartido necesario para las extensiones.
+- Aplica las restricciones correspondientes.
+- Programa el final si existe una duración definida.
+- Crea o sincroniza una sesión.
+- Actualiza la interfaz de Inicio.
+
+9.4. Estado activo
+
+Mientras el modo está activo, Inicio muestra:
+
+- Actividad actual.
+- Estado de modo activo.
+- Tiempo o condición de finalización.
+- Cantidad de bloqueos.
+- Acción de recreo.
+- Acción de finalización.
+
+9.5. Finalización
+
+El flujo exacto depende de la protección elegida. Un modo no protegido puede
+finalizarse desde la interfaz. Una configuración protegida puede requerir una
+validación adicional, incluida la lectura del Rituo Tag.
+
+Al finalizar, la app debe retirar solamente las restricciones que pertenecen a
+la protección terminada y conservar cualquier otra restricción legítimamente
+activa. El proyecto separa estados y almacenes para modos interactivos, rituales
+programados, protección estricta y contenido sensible con el objetivo de evitar
+interferencias entre ellos.
+
+
+10. RITUALES PROGRAMADOS
+------------------------
+
+10.1. Propósito
+
+Un ritual representa un compromiso recurrente. Su ventaja respecto de un modo
+manual es que no obliga al usuario a recordar todos los días que debe activar la
+protección.
+
+10.2. Datos de configuración
+
+El modelo RitualScheduler contempla:
+
+- Identificador.
+- Título.
+- Detalle o descripción.
+- Objetivo de foco.
+- Ícono.
+- Hora y minuto de inicio.
+- Hora y minuto de fin.
+- Días de la semana.
+- Selección de apps, categorías y dominios.
+- Protección general.
+- Protección NFC.
+- Protección con contraseña cuando corresponda.
+- Modo estricto.
+- Bloqueo de instalación de apps.
+- Bloqueo de contenido sensible.
+
+10.3. Días y horarios
+
+Internamente, los días siguen la numeración de Calendar de Apple:
+
+- 1: domingo.
+- 2: lunes.
+- 3: martes.
+- 4: miércoles.
+- 5: jueves.
+- 6: viernes.
+- 7: sábado.
+
+La lógica contempla también intervalos que atraviesan la medianoche. Esto es
+importante para rituales como dormir, cuya hora de inicio puede pertenecer a un
+día y su final al siguiente.
+
+10.4. Ejecución en segundo plano
+
+Device Activity permite que el sistema informe a la extensión cuando comienza o
+termina un intervalo. La extensión RituoDeviceActivityMonitor aplica o libera las
+restricciones aunque la app principal no esté abierta en primer plano.
+
+10.5. Cambios y eliminación
+
+Modificar o borrar un ritual requiere actualizar:
+
+- Estado local.
+- Programación de Device Activity.
+- Estado compartido del App Group.
+- Representación en backend.
+- Restricciones actualmente activas, si el ritual estaba en curso.
+
+Las configuraciones protegidas pueden aplicar requisitos adicionales antes de
+permitir una eliminación.
+
+
+11. BLOQUEO CON SCREEN TIME
+---------------------------
+
+11.1. Frameworks utilizados
+
+El núcleo de la protección utiliza capacidades oficiales de Apple:
+
+- FamilyControls.
+- ManagedSettings.
+- DeviceActivity.
+- ManagedSettingsUI en la extensión visual de bloqueo.
+
+11.2. Qué bloquea Rituo
+
+Según la selección del usuario, Rituo puede restringir:
+
+- Aplicaciones concretas.
+- Categorías completas.
+- Dominios web concretos.
+- Instalación de nuevas aplicaciones.
+- Contenido web sensible definido por la protección del producto.
+
+11.3. Privacidad de la selección
+
+Family Controls utiliza tokens opacos. Rituo puede almacenar y sincronizar esos
+tokens para reconstruir la configuración en la instalación correspondiente,
+pero no necesita resolverlos como una lista pública de nombres o bundle IDs de
+las apps elegidas. En las solicitudes de sincronización se manejan
+identificadores codificados y nombres genéricos cuando es necesario representar
+la selección.
+
+11.4. Pantalla de bloqueo
+
+La extensión ShieldConfigurationExtension personaliza la pantalla que iOS
+muestra cuando una persona intenta abrir contenido restringido. Esto mantiene
+la experiencia visual alineada con Rituo aun cuando la protección es presentada
+por el sistema.
+
+11.5. Monitor de actividad
+
+La extensión de Device Activity administra eventos como:
+
+- Inicio de un ritual.
+- Fin de un ritual.
+- Inicio y fin de un recreo.
+- Final programado de un modo.
+- Reaplicación de reglas después de un evento del sistema.
+- Registro de eventos para posterior sincronización.
+
+11.6. Stores separados
+
+Managed Settings permite utilizar stores con nombre. El proyecto separa
+responsabilidades para evitar que un flujo borre por error las restricciones de
+otro. Entre los conceptos manejados se encuentran:
+
+- Ritual programado.
+- Modo interactivo.
+- Protección estricta programada.
+- Protección estricta interactiva.
+- Protección web sensible global.
+
+
+12. MODO ESTRICTO
+-----------------
+
+El modo estricto agrega resistencia a la evasión de la protección. La interfaz
+lo describe como una opción que impide eliminar Rituo mientras el modo está
+activo.
+
+Su objetivo funcional es reducir la posibilidad de que el usuario desactive la
+herramienta en un momento impulsivo. Como todas las capacidades de Screen Time,
+depende de la autorización de Family Controls y de las capacidades habilitadas
+en los targets de distribución.
+
+El modo estricto es opcional por configuración. No debe asumirse que todas las
+sesiones tienen la misma severidad.
+
+
+13. BLOQUEO DE DESCARGAS DE APLICACIONES
+----------------------------------------
+
+Una configuración puede impedir la instalación de nuevas apps mientras la
+protección está activa. Esta opción apunta a evitar un camino de evasión común:
+instalar otra aplicación para sustituir una que fue bloqueada.
+
+La opción forma parte tanto del modelo de modos como del modelo de rituales. Su
+activación se representa visualmente antes de iniciar la sesión.
+
+
+14. PROTECCIÓN DE CONTENIDO SENSIBLE EN LA WEB
+----------------------------------------------
+
+Rituo incorpora una protección opcional para contenido web sensible. El
+proyecto contiene:
+
+- Un catálogo compartido de dominios sensibles.
+- Aplicación de reglas mediante Managed Settings.
+- Una extensión Safari Content Blocker.
+- Un controlador compartido para activar o actualizar el bloqueo.
+
+El catálogo valida los límites admitidos por Managed Settings. El objetivo no
+es prometer una clasificación perfecta de todo Internet, sino aplicar las reglas
+que el producto tiene configuradas y que el sistema permite administrar.
+
+La protección debe describirse como filtro o bloqueo de contenido sensible, no
+como garantía absoluta de que ningún contenido de ese tipo podrá aparecer.
+
+
+15. RITUO TAG Y NFC
+-------------------
+
+15.1. Función del tag
+
+Rituo Tag es una capa física opcional. Permite que una acción protegida no pueda
+resolverse exclusivamente con toques dentro de la misma pantalla que genera la
+distracción.
+
+15.2. Capacidades funcionales contempladas
+
+El código y los modelos contemplan:
+
+- Lectura de un tag NFC.
+- Registro o claim de un tag.
+- Actualización del tag asociado.
+- Verificación del tag.
+- Validación para finalizar o desbloquear una protección.
+- Marcado de tag perdido.
+- Información específica para demostración durante revisión.
+
+15.3. Permiso de NFC
+
+La app declara el acceso a lectura NFC y explica que Rituo usa NFC para registrar
+y validar el tag físico de enfoque. El target principal tiene habilitado el
+formato de lectura de tags requerido.
+
+15.4. Seguridad y límites
+
+El NFC es una señal de posesión del objeto, no una autenticación biométrica. Su
+valor en Rituo es principalmente conductual y operativo: obliga a realizar una
+acción física consciente.
+
+La aplicación no debe guardar una clave privada sensible del usuario dentro de
+este documento ni exponer datos técnicos del tag en materiales públicos sin una
+necesidad concreta.
+
+
+16. RECREOS, FINALIZACIÓN Y EMERGENCIAS
+---------------------------------------
+
+16.1. Recreo
+
+Durante una sesión activa, el usuario puede disponer de una pausa temporal. La
+interfaz relevada ofrece "Recreo 5 min". El sistema debe coordinar el comienzo y
+el fin del recreo para retirar temporalmente los bloqueos y reactivarlos al
+terminar.
+
+16.2. Final programado
+
+Un modo con duración o un ritual con hora de finalización utiliza programación
+de Device Activity. El sistema puede informar el final aun cuando la app
+principal no esté abierta.
+
+16.3. Desbloqueo de emergencia
+
+Los modelos del backend contemplan razones como:
+
+- Olvido del tag.
+- Pérdida del tag.
+
+También contemplan:
+
+- Días de espera o cooldown.
+- Fecha de disponibilidad.
+- Indicador de si el desbloqueo está permitido.
+- Marcado del tag como perdido.
+
+Este flujo es una válvula de seguridad. Debe equilibrar dos objetivos:
+
+- No dejar al usuario sin salida ante una pérdida real.
+- No convertir la emergencia en una forma instantánea de evadir todas las
+  protecciones.
+
+
+17. MÉTRICAS Y ANALÍTICA DE FOCO
+--------------------------------
+
+17.1. Propósito
+
+Las métricas hacen visible el progreso de la persona. No son una puntuación
+moral ni un diagnóstico de salud. Su función es ayudar a entender hábitos y
+reforzar la continuidad.
+
+17.2. Datos de sesión
+
+Una sesión puede incluir:
+
+- Identificador.
+- Tipo: ritual o modo.
+- Fuente de activación.
+- Fecha y hora de inicio.
+- Fecha y hora de fin.
+- Estado.
+- Duración efectiva.
+- Configuración o actividad asociada.
+
+17.3. Resumen de métricas
+
+El modelo de resumen contempla:
+
+- Total de sesiones.
+- Sesiones completadas.
+- Sesiones canceladas.
+- Sesiones activas.
+- Sesiones de ritual.
+- Sesiones de modo.
+- Minutos de foco.
+- Racha actual.
+- Foco semanal.
+
+17.4. Presentación
+
+La vista Foco combina:
+
+- Encabezado con foco total, sesiones y racha.
+- Promedio diario.
+- Gráfico semanal.
+- Tarjetas de completadas, canceladas, sesiones totales y tiempo.
+- Lista por actividad.
+
+17.5. Interpretación
+
+Una sesión cancelada puede seguir figurando en el total porque representa un
+intento real. El tiempo de foco y la cantidad de sesiones no necesariamente
+crecen al mismo ritmo. Las métricas deben explicarse de forma consistente para
+evitar que un usuario interprete una diferencia como un error.
+
+
+18. PERFIL, CUENTA Y SOPORTE
+----------------------------
+
+18.1. Perfil
+
+El perfil reúne la identidad visible del usuario y accesos a configuraciones.
+Los modelos de autenticación contemplan:
+
+- Identificador de usuario.
+- Correo electrónico.
+- Nombre visible.
+- Fecha de nacimiento.
+- Estado de verificación del correo.
+- Estado de la cuenta.
+
+18.2. Cuenta
+
+Las operaciones de cuenta deben estar vinculadas a la sesión autenticada. Al
+cerrar sesión, el proyecto libera las restricciones activas y separa el estado
+local por cuenta para que los datos de un usuario no aparezcan en la sesión de
+otro.
+
+18.3. Tag
+
+La configuración del tag permite revisar y administrar la asociación física sin
+mezclarla con la configuración general de modos o rituales.
+
+18.4. Protección
+
+La configuración de protección centraliza el estado de Family Controls y las
+capacidades que permiten aplicar Screen Time.
+
+18.5. Soporte
+
+La aplicación cuenta con una vista de soporte y el ecosistema público utiliza
+la URL:
+
+https://rituo.io/soporte
+
+El sitio de soporte incorpora un canal de contacto mediante formulario. Los
+mensajes de soporte constituyen contenido generado por el usuario y deben
+tratarse de acuerdo con la política de privacidad.
+
+
+19. NOTIFICACIONES Y EJECUCIÓN EN SEGUNDO PLANO
+-----------------------------------------------
+
+Rituo utiliza notificaciones locales y eventos del sistema para comunicar
+cambios relevantes, especialmente aquellos que ocurren fuera del primer plano.
+
+Los casos contemplados incluyen:
+
+- Inicio de un ritual.
+- Finalización de un ritual.
+- Inicio de un modo.
+- Finalización automática de un modo.
+- Inicio o fin de un recreo.
+- Eventos registrados por la extensión para informar posteriormente a la app.
+
+La app principal y la extensión comparten un almacén de notificaciones y estado
+mediante el App Group. Cuando la app vuelve a estar activa puede consumir esos
+eventos, actualizar la interfaz y sincronizar el backend.
+
+
+20. SINCRONIZACIÓN, RED Y FUNCIONAMIENTO OFFLINE
+------------------------------------------------
+
+20.1. Backend
+
+La aplicación utiliza servicios separados conceptualmente para:
+
+- Autenticación e identidad.
+- Dominio principal de Rituo: modos, rituales, sesiones, métricas, tags y otros
+  recursos funcionales.
+
+Las URLs base se obtienen desde la configuración de la aplicación. Este
+documento no reproduce hosts privados ni valores de entornos internos.
+
+20.2. Estado local
+
+Parte del estado se guarda localmente para que la interfaz y las protecciones
+puedan seguir funcionando sin depender de una respuesta inmediata del servidor.
+Los modos se almacenan por cuenta y se combinan con configuraciones iniciales
+cuando es necesario.
+
+20.3. Cola de salida
+
+El proyecto incorpora una outbox de sincronización. Cuando una operación no
+puede enviarse en el momento, puede quedar pendiente y reintentarse al recuperar
+conectividad.
+
+La cola contempla recuperación ante almacenamiento corrupto para evitar que un
+archivo local defectuoso bloquee permanentemente la sincronización.
+
+20.4. Conectividad
+
+Un monitor de red informa cambios de disponibilidad. La recuperación de
+conectividad permite procesar operaciones pendientes.
+
+20.5. Conflictos y autoridad
+
+La aplicación maneja dos fuentes de verdad con responsabilidades distintas:
+
+- El dispositivo es la autoridad inmediata para las restricciones activas y los
+  eventos de Screen Time.
+- El backend es la autoridad compartida para cuenta, sincronización y métricas
+  consolidadas.
+
+Una implementación correcta debe evitar que una sincronización tardía reactive
+una configuración que el usuario ya eliminó o borre una protección vigente por
+haber recibido datos antiguos.
+
+
+21. MODELO DE DATOS FUNCIONAL
+-----------------------------
+
+21.1. Usuario
+
+- ID.
+- Correo.
+- Nombre visible.
+- Fecha de nacimiento.
+- Verificación de correo.
+- Estado.
+
+21.2. Instalación o dispositivo
+
+- Identificador de instalación.
+- Etiqueta del dispositivo.
+- Asociación con la cuenta.
+- Identificador técnico utilizado para sincronización y notificaciones cuando
+  corresponde.
+
+21.3. Modo
+
+- ID local y remoto.
+- Título e ícono.
+- Selección protegida.
+- Protección general.
+- NFC.
+- Modo estricto.
+- Bloqueo de instalación.
+- Contenido sensible.
+
+21.4. Ritual
+
+- ID.
+- Título y detalle.
+- Ícono y objetivo.
+- Inicio y fin.
+- Días.
+- Selección protegida.
+- Reglas de protección.
+- Representación programada en el sistema.
+
+21.5. Sesión
+
+- ID.
+- Ritual o modo asociado.
+- Fuente.
+- Inicio y fin.
+- Estado.
+- Duración.
+
+21.6. Métricas
+
+- Resumen global.
+- Resumen semanal.
+- Conteos por estado.
+- Tiempo por actividad.
+- Racha.
+
+21.7. Tag
+
+- Identificador funcional.
+- Asociación con usuario o instalación.
+- Estado de registro.
+- Estado perdido o activo.
+- Información de verificación.
+
+21.8. Documento legal
+
+- Tipo.
+- ID y versión.
+- Contenido y URL.
+- Hash.
+- Fechas.
+- Vigencia.
+- Aceptación del usuario.
+
+21.9. Solicitud de soporte
+
+- Datos de contacto proporcionados.
+- Asunto o categoría cuando existe.
+- Mensaje.
+- Metadatos técnicos estrictamente necesarios para resolver el caso.
+
+
+22. ARQUITECTURA DE LA APLICACIÓN IOS
+-------------------------------------
+
+22.1. Aplicación principal
+
+Target: HolaSwift
+Bundle ID: io.rituo.app
+
+Responsabilidades:
+
+- Interfaz SwiftUI.
+- Autenticación.
+- Onboarding y aceptación legal.
+- Configuración de modos y rituales.
+- Activación interactiva.
+- Métricas.
+- Perfil y soporte.
+- Sincronización con backend.
+- Coordinación de permisos.
+- Lectura NFC.
+
+22.2. Shield Configuration Extension
+
+Target: ShieldConfigurationExtension
+Bundle ID: io.rituo.app.ShieldConfigurationExtension
+
+Responsabilidad:
+
+- Personalizar la apariencia del shield de Screen Time que muestra iOS para el
+  contenido bloqueado.
+
+22.3. Device Activity Monitor Extension
+
+Target: RituoDeviceActivityMonitor
+Bundle ID: io.rituo.app.deviceactivitymonitor
+
+Responsabilidades:
+
+- Recibir comienzos y finales de intervalos.
+- Aplicar restricciones de rituales.
+- Finalizar o reconfigurar modos programados.
+- Administrar recreos.
+- Mantener estado compartido.
+- Registrar eventos para la app principal.
+
+22.4. Safari Content Blocker Extension
+
+Target: RituoSafariContentBlocker
+Bundle ID: io.rituo.app.SafariContentBlocker
+
+Responsabilidad:
+
+- Aplicar reglas de bloqueo de contenido compatibles con Safari.
+
+22.5. App Group
+
+Identificador confirmado:
+
+group.io.rituo.app
+
+Lo utilizan la app principal y las extensiones para compartir únicamente el
+estado necesario para coordinar protecciones, eventos y configuración.
+
+22.6. Configuración de despliegue
+
+- Plataforma: iOS/iPadOS.
+- Versión mínima confirmada: iOS 17.0.
+- Versión comercial relevada: 1.0.
+- Build de distribución relevado: 40.
+
+
+23. FRAMEWORKS Y CAPACIDADES RELEVANTES
+---------------------------------------
+
+Frameworks de Apple confirmados por el código:
+
+- SwiftUI.
+- FamilyControls.
+- ManagedSettings.
+- ManagedSettingsUI.
+- DeviceActivity.
+- CoreNFC.
+- AuthenticationServices para Sign in with Apple.
+- Network para monitoreo de conectividad.
+- UserNotifications para notificaciones locales.
+- Security/Keychain para almacenamiento protegido de sesión.
+
+Servicios o bibliotecas externos visibles en el proyecto:
+
+- Firebase, incluyendo Crashlytics cuando la configuración está disponible.
+- Google Sign-In.
+- Dependencias transitivas de Firebase y Google.
+
+Capacidades de distribución confirmadas:
+
+- Family Controls en el target principal.
+- Family Controls en ShieldConfigurationExtension.
+- Family Controls en RituoDeviceActivityMonitor.
+- App Groups en los targets que comparten estado.
+- NFC Tag Reading en la app principal.
+- Sign in with Apple en la app principal.
+
+La extensión Safari no necesita Family Controls para su función específica; sí
+utiliza el App Group compartido.
+
+
+24. SEGURIDAD TÉCNICA
+---------------------
+
+24.1. Sesión
+
+Los tokens de autenticación se guardan mediante Keychain, no como texto dentro
+de preferencias ordinarias.
+
+24.2. Configuración
+
+Las URLs base y valores de entorno se obtienen desde Info.plist y archivos de
+configuración. Los secretos reales no deben incorporarse al repositorio ni a
+este documento.
+
+24.3. Comunicación
+
+El cliente valida que las URLs configuradas utilicen esquemas HTTP o HTTPS. En
+producción, los endpoints deben utilizar HTTPS.
+
+24.4. Separación por cuenta
+
+El almacenamiento de modos y estado se segmenta por usuario. El cierre de sesión
+libera restricciones y limpia referencias de sesión para evitar exposición
+entre cuentas.
+
+24.5. Extensiones
+
+Las extensiones reciben solamente los entitlements necesarios para su función.
+La coordinación se realiza mediante el App Group, que debe mantenerse limitado
+a los targets legítimos de Rituo.
+
+24.6. Diagnóstico
+
+Crashlytics puede recopilar errores y diagnósticos cuando está correctamente
+configurado. Si el archivo de configuración de Firebase no está presente, el
+proyecto está preparado para continuar sin activar Crashlytics.
+
+24.7. Cifrado y export compliance
+
+La configuración de la app declara que no utiliza cifrado no exento. Esto suele
+corresponder a una aplicación que usa el cifrado estándar del sistema y HTTPS,
+sin implementar algoritmos criptográficos propios sujetos a documentación
+adicional. Esta declaración debe revisarse si la arquitectura criptográfica
+cambia.
+
+
+25. PRIVACIDAD
+--------------
+
+25.1. Principio general
+
+Rituo debe recopilar únicamente la información necesaria para autenticación,
+funcionamiento, sincronización, soporte, analítica del producto y diagnóstico.
+
+25.2. Datos declarados en App Store Connect para la versión relevada
+
+- Nombre.
+- Dirección de correo electrónico.
+- Otro contenido del usuario.
+- ID de usuario.
+- ID del dispositivo o instalación.
+- Interacción con el producto.
+- Datos de errores.
+- Otros datos de diagnóstico.
+- Otros tipos de datos necesarios para la funcionalidad declarada.
+
+25.3. Vinculación con la identidad
+
+La configuración de privacidad preparada para App Store distingue:
+
+Datos vinculados con el usuario:
+
+- Identificadores.
+- Datos de contacto.
+- Contenido del usuario.
+- Datos de uso o interacción necesarios para la cuenta y el producto.
+- Otros datos funcionales asociados a la cuenta.
+
+Datos no vinculados con el usuario:
+
+- Diagnósticos configurados para tratarse sin vinculación directa cuando se
+  cumplen las condiciones declaradas.
+
+25.4. Finalidades declaradas
+
+La finalidad principal es "Funcionalidad de la app". La interacción con el
+producto también puede utilizarse para análisis de datos orientado a comprender
+y mejorar el funcionamiento.
+
+25.5. Seguimiento
+
+No se declaró el uso de estos datos para seguimiento entre aplicaciones y sitios
+de terceros. Si en el futuro se incorporan SDK publicitarios o prácticas de
+tracking, la declaración, los permisos y la política deberán actualizarse antes
+de publicar el cambio.
+
+25.6. Selecciones de Screen Time
+
+Las selecciones se representan con tokens proporcionados por Apple. Deben
+tratarse como información privada de configuración aunque no revelen de forma
+directa el nombre de cada app a servicios externos.
+
+25.7. Formularios de contacto
+
+Los formularios de soporte o contacto pueden recopilar nombre, correo y mensaje.
+La política debe explicar su finalidad, conservación y canal para ejercer
+derechos.
+
+25.8. Política pública
+
+URL confirmada durante la configuración de App Store:
+
+https://rituo.io/legal/politica-de-privacidad
+
+
+26. TÉRMINOS, EDAD Y CONSISTENCIA LEGAL
+--------------------------------------
+
+26.1. Términos y privacidad no son el mismo documento
+
+La política de privacidad explica qué datos se tratan, para qué, con qué base y
+qué derechos tiene la persona. Los términos y condiciones regulan el uso del
+servicio, elegibilidad, obligaciones, propiedad, limitaciones y terminación,
+entre otros aspectos.
+
+26.2. Edad
+
+La regla funcional confirmada es 16 años o más. Deben coincidir:
+
+- Validación del formulario de registro.
+- Texto de términos y condiciones.
+- Política de privacidad cuando menciona menores.
+- Comunicación de marketing.
+- Instrucciones de soporte.
+
+26.3. Clasificación de App Store
+
+La versión se configuró con reemplazo manual de clasificación a 16+. En algunas
+regiones Apple muestra equivalencias locales. Para sistemas anteriores a la
+nueva clasificación global, App Store Connect indicó una equivalencia más alta
+con excepciones regionales.
+
+La clasificación no reemplaza el control de edad dentro del registro.
+
+26.4. URL de términos
+
+Ruta pública utilizada en el ecosistema:
+
+https://rituo.io/legal/terminos-y-condiciones
+
+El documento descargable o el contenido servido por esa ruta debe mantenerse
+actualizado cuando el abogado entregue una nueva versión.
+
+
+27. SITIO WEB Y ECOSISTEMA PÚBLICO
+----------------------------------
+
+Sitio principal:
+
+https://rituo.io/
+
+Canales y rutas relevantes:
+
+- /soporte: soporte y formulario de contacto.
+- /redes: presencia en redes sociales, contenido social y contacto.
+- /legal/politica-de-privacidad: política de privacidad.
+- /legal/terminos-y-condiciones: términos y condiciones.
+
+La ruta /redes fue concebida como una vista de redes sociales, con una
+publicación de Instagram integrada y diseño adaptable a dispositivos móviles.
+La ruta /soporte no es solamente una redirección: debe permitir contactar a
+Rituo mediante un formulario que envía la consulta al correo de soporte.
+
+El sitio y la app deben conservar identidad, textos legales, datos de contacto y
+promesas comerciales consistentes.
+
+
+28. MODELO COMERCIAL Y DISTRIBUCIÓN
+-----------------------------------
+
+28.1. Precio
+
+La versión 1.0 fue configurada como gratuita en App Store, con precio equivalente
+a USD 0 en el país base y precios gratuitos en las demás regiones.
+
+28.2. Disponibilidad
+
+Se configuró distribución pública en todos los países o regiones disponibles en
+App Store Connect al momento del relevamiento.
+
+28.3. Método de distribución
+
+- Pública.
+- No limitada a Apple Business Manager.
+- No configurada como app privada.
+
+28.4. Publicación
+
+La versión se preparó con publicación manual. Esto significa que, después de la
+aprobación de Apple, el equipo de Rituo elige el momento exacto en que la versión
+se libera en App Store.
+
+28.5. Compras y suscripciones
+
+La versión relevada no confirma una compra dentro de la app o suscripción activa
+como requisito de la versión 1.0. La existencia de secciones de monetización en
+App Store Connect no implica que Rituo ya comercialice una suscripción.
+
+El Rituo Tag es un componente físico del ecosistema, pero este documento no
+afirma precio, inventario ni canal de venta porque esos datos no están
+confirmados por el proyecto iOS relevado.
+
+
+29. METADATOS DE APP STORE CONFIRMADOS
+--------------------------------------
+
+29.1. Texto promocional en español
+
+"Creá rituales de foco, bloqueá las apps que te distraen y usá tu Rituo Tag solo
+cuando realmente elijas desbloquear"
+
+29.2. Descripción en español
+
+"Rituo te ayuda a usar el teléfono con más intención.
+
+Creá rituales de foco, elegí qué apps querés dejar afuera por un rato y recuperá
+un momento de decisión antes de volver a desbloquearlas.
+
+También podés programar momentos de foco para que Rituo se active
+automáticamente en horarios específicos, como al trabajar, estudiar, dormir o
+empezar el día."
+
+29.3. Texto promocional en inglés
+
+"Create focus rituals, block distracting apps, and use your Rituo Tag only when
+you choose to unlock."
+
+29.4. Descripción en inglés
+
+"Rituo helps you reduce distractions and use your time more intentionally.
+
+Create focus rituals, choose which apps you want to block for a while, and
+regain the moment of choice before opening them again.
+
+You can also schedule focus sessions so Rituo activates automatically at
+specific times, such as when working, studying, sleeping, or starting your day."
+
+29.5. URLs
+
+- Marketing: https://rituo.io/
+- Soporte: https://rituo.io/soporte
+- Privacidad: https://rituo.io/legal/politica-de-privacidad
+
+
+30. ESTADO DE PUBLICACIÓN AL 12 DE AGOSTO DE 2026
+-------------------------------------------------
+
+Esta sección es temporal y debe actualizarse cuando cambie el estado.
+
+Secuencia confirmada:
+
+1. El build 39 fue enviado a revisión.
+2. Apple lo rechazó de forma automatizada bajo la guía 2.5.1 porque detectó uso
+   de Screen Time sin el entitlement de Family Controls de distribución en el
+   binario enviado.
+3. Se confirmó que la solicitud de Family Controls (Distribution) estaba
+   asignada por Apple.
+4. La capability de distribución quedó incluida en:
+   - La app principal.
+   - ShieldConfigurationExtension.
+   - RituoDeviceActivityMonitor.
+5. Se generó el build 40.
+6. El archivo 1.0 (40) superó la validación de Xcode.
+7. El build 40 fue cargado a App Store Connect.
+8. Se seleccionó el build 40 en la versión 1.0 y se volvió a enviar a revisión.
+9. App Store Connect registró posteriormente los estados:
+   - Pendiente de revisión.
+   - En revisión.
+   - Pendiente de publicación.
+
+Estado conocido al cierre de este documento:
+
+- La versión 1.0 figura como "Pendiente de publicación".
+- Apple completó la revisión.
+- Como la publicación es manual, resta que el titular de la cuenta ejecute la
+  publicación cuando decida lanzar la app.
+
+Este estado no implica que la versión continúe pendiente en fechas posteriores.
+Debe verificarse App Store Connect antes de comunicar públicamente que la app ya
+está disponible.
+
+
+31. REGLAMENTO DE SERVICIOS DIGITALES DE LA UNIÓN EUROPEA
+---------------------------------------------------------
+
+Durante la configuración de App Store Connect se declaró la condición de
+comerciante para distribución en la Unión Europea y se envió documentación para
+verificar identidad, dirección y datos de contacto.
+
+La verificación del Reglamento de Servicios Digitales estuvo en revisión durante
+la preparación de la versión. Su estado final debe consultarse en la sección
+Negocio/Cumplimiento de App Store Connect.
+
+Si Apple todavía no hubiera completado esa verificación, podría afectar la
+disponibilidad en países de la Unión Europea aunque la versión de la app haya
+sido aprobada técnicamente.
+
+Los datos aportados para esa verificación son administrativos y no se reproducen
+en este documento.
+
+
+32. RECORRIDOS PRINCIPALES DEL USUARIO
+--------------------------------------
+
+32.1. Primer uso
+
+1. Abrir Rituo.
+2. Elegir un método de inicio de sesión o registro.
+3. Crear la cuenta y validar la edad.
+4. Leer y aceptar términos y política vigentes.
+5. Completar el onboarding de protección.
+6. Autorizar Family Controls.
+7. Llegar a Inicio.
+8. Configurar el primer modo o ritual.
+
+32.2. Iniciar un modo manual
+
+1. Abrir Inicio.
+2. Tocar "Iniciar un modo".
+3. Elegir una actividad.
+4. Revisar apps, categorías y sitios seleccionados.
+5. Definir duración.
+6. Revisar modo estricto, bloqueo de descargas y contenido sensible.
+7. Deslizar para activar.
+8. Continuar con la actividad mientras iOS aplica las restricciones.
+
+32.3. Tomar un recreo
+
+1. Abrir la sesión activa.
+2. Elegir "Recreo 5 min".
+3. La app registra el comienzo del recreo.
+4. Se suspenden temporalmente las restricciones aplicables.
+5. Device Activity detecta el final.
+6. Se reaplican las reglas de la sesión.
+
+32.4. Finalizar un modo protegido con NFC
+
+1. Tocar "Finalizar modo".
+2. La app verifica que la sesión requiere NFC.
+3. Presenta el lector.
+4. El usuario acerca el tag registrado.
+5. Rituo valida el tag.
+6. Finaliza la sesión.
+7. Retira sus restricciones.
+8. Sincroniza el resultado y actualiza métricas.
+
+32.5. Crear un ritual
+
+1. Abrir Rituales.
+2. Tocar "Crear un ritual".
+3. Ingresar nombre.
+4. Definir inicio y fin.
+5. Elegir días.
+6. Seleccionar apps, categorías y dominios.
+7. Elegir opciones de protección.
+8. Guardar.
+9. La app sincroniza y programa Device Activity.
+
+32.6. Consultar progreso
+
+1. Abrir Foco.
+2. Revisar foco total y racha.
+3. Consultar gráfico semanal.
+4. Comparar completadas y canceladas.
+5. Revisar desglose por actividad.
+
+32.7. Cerrar sesión
+
+1. Abrir Perfil o Cuenta.
+2. Elegir cerrar sesión.
+3. La app retira protecciones activas asociadas a la cuenta.
+4. Limpia o desacopla el estado autenticado.
+5. Conserva solamente la información local que corresponda según la política.
+6. Regresa al flujo de acceso.
+
+
+33. REGLAS DE NEGOCIO Y CONSISTENCIA IMPORTANTES
+------------------------------------------------
+
+- Nadie menor de 16 años debe poder completar el registro si esa sigue siendo la
+  regla legal vigente.
+- Términos, privacidad y formulario de registro deben usar la misma edad mínima.
+- No debe activarse un bloqueo si Family Controls no está autorizado.
+- Una selección vacía puede ser válida solamente si otra opción de protección
+  aporta una regla real y la interfaz lo explica.
+- El final de una sesión debe retirar sus propias reglas sin borrar otras
+  protecciones activas.
+- Un recreo debe volver a aplicar los bloqueos al finalizar.
+- Un ritual que atraviesa medianoche debe evaluarse respecto del día de inicio y
+  el intervalo efectivo.
+- Los cambios de zona horaria y horario de verano deben tratarse con Calendar y
+  no mediante segundos fijos acumulados.
+- Las selecciones de Screen Time deben persistirse de forma compatible con los
+  tokens proporcionados por Apple.
+- Un modo o ritual protegido no debe poder eliminarse mediante un camino
+  alternativo que omita la verificación configurada.
+- El cierre de sesión debe liberar los bloqueos para evitar dejar el dispositivo
+  restringido sin una cuenta activa que pueda administrarlos.
+- El cambio de cuenta no debe mezclar modos, rituales ni métricas locales.
+- Las operaciones offline deben ser idempotentes o contar con identificadores
+  suficientes para evitar duplicados al reintentar.
+- El tag perdido debe activar el flujo de emergencia definido, no simplemente
+  saltar toda validación.
+- La app no debe afirmar que bloquea absolutamente todo contenido sensible.
+- Las métricas deben distinguir sesión cancelada de sesión completada.
+- La interfaz debe mostrar el estado real aplicado por el sistema, no solamente
+  la intención local de activar un bloqueo.
+
+
+34. ESTADOS FUNCIONALES RELEVANTES
+----------------------------------
+
+34.1. Estado de autorización
+
+- No solicitado.
+- Aprobado.
+- Denegado.
+- No disponible o restringido por el sistema.
+
+34.2. Estado de modo
+
+- Inactivo.
+- Preparándose para activar.
+- Activo.
+- En recreo.
+- Preparándose para finalizar.
+- Finalizado.
+- Pendiente de sincronización.
+
+34.3. Estado de ritual
+
+- Borrador local.
+- Guardado.
+- Programado.
+- Activo por intervalo.
+- En recreo.
+- Finalizado por intervalo.
+- Deshabilitado o eliminado.
+- Pendiente de sincronización.
+
+34.4. Estado de sesión
+
+Los nombres exactos dependen de la respuesta del backend, pero funcionalmente se
+distinguen:
+
+- Activa.
+- Completada.
+- Cancelada.
+
+34.5. Estado del tag
+
+- No configurado.
+- Registrado.
+- Verificado.
+- No coincidente.
+- Perdido.
+- En proceso de reemplazo o recuperación.
+
+34.6. Estado legal
+
+- Documento vigente no aceptado.
+- Documento vigente aceptado.
+- Documento reemplazado por una nueva versión.
+- Aceptación pendiente de sincronización.
+
+
+35. CALIDAD, ACCESIBILIDAD Y EXPERIENCIA
+---------------------------------------
+
+35.1. Claridad
+
+Antes de activar una sesión, el usuario debe poder comprender:
+
+- Qué se bloqueará.
+- Durante cuánto tiempo.
+- Cómo podrá finalizar.
+- Si necesitará el tag.
+- Si el modo es estricto.
+- Si se bloquearán descargas o contenido sensible.
+
+35.2. Prevención de errores
+
+Las acciones de activar, eliminar y finalizar tienen consecuencias reales. El
+diseño usa confirmaciones y gestos deliberados para reducir errores.
+
+35.3. Accesibilidad
+
+La interfaz no debe depender exclusivamente del color verde o rojo para indicar
+estado. Íconos, etiquetas y VoiceOver deben aportar el mismo significado. Los
+controles deben conservar áreas táctiles adecuadas y responder al tamaño de
+texto del sistema siempre que sea posible.
+
+35.4. iPhone e iPad
+
+La app se distribuye para iPhone e iPad. Las vistas deben ser adaptables y no
+simplemente ampliar un layout de teléfono. Para App Store se cargaron capturas
+específicas de iPad de 13 pulgadas además de las de iPhone.
+
+35.5. Estados vacíos
+
+Rituales y métricas tienen estados iniciales con cero contenido. Estos estados
+deben explicar el siguiente paso y no parecer pantallas rotas.
+
+35.6. Errores y recuperación
+
+Los errores de red no deben cancelar silenciosamente una protección local. La
+interfaz debe explicar qué operación quedó pendiente y reintentar cuando
+corresponda.
+
+
+36. OBSERVABILIDAD Y SOPORTE TÉCNICO
+------------------------------------
+
+El proyecto integra Crashlytics de forma opcional para registrar fallos y
+diagnósticos. También cuenta con modelos de soporte y una vista dedicada.
+
+Para investigar un problema sin invadir la privacidad deberían priorizarse:
+
+- Versión y build de la app.
+- Versión de iOS/iPadOS.
+- Tipo general de dispositivo.
+- Estado de autorización de Family Controls.
+- Tipo de flujo afectado: modo, ritual, recreo, NFC o sincronización.
+- Momento aproximado del evento.
+- Estado de red.
+- Identificadores técnicos no secretos de la operación.
+- Registros de error sanitizados.
+
+Nunca debe solicitarse por soporte:
+
+- Contraseña del usuario.
+- Token de sesión.
+- Clave privada.
+- Código completo de autenticación.
+- Datos personales no necesarios para resolver el caso.
+
+
+37. LIMITACIONES Y PUNTOS A VERIFICAR
+-------------------------------------
+
+- Las capacidades de Screen Time dependen de Apple, de la autorización del
+  usuario y de entitlements de distribución aprobados.
+- El simulador no reproduce todas las capacidades de Family Controls y NFC; las
+  pruebas finales deben realizarse en dispositivos físicos compatibles.
+- El filtrado de contenido sensible depende del catálogo y de las capacidades de
+  Safari/Managed Settings; no es una garantía universal.
+- La disponibilidad de una app bloqueada puede cambiar si Apple modifica los
+  tokens o la selección del usuario.
+- El estado de App Store descrito en este documento es temporal.
+- El estado final del cumplimiento DSA debe consultarse en App Store Connect.
+- El texto legal definitivo debe mantenerse alineado con la versión aprobada por
+  el abogado.
+- Este relevamiento no confirma un sistema de suscripciones activo.
+- Este relevamiento no confirma precio, inventario ni logística comercial del
+  tag físico.
+- Los nombres y métricas visibles pueden evolucionar sin cambiar el propósito
+  central del producto.
+
+
+38. MENSAJES DE COMUNICACIÓN REUTILIZABLES
+------------------------------------------
+
+38.1. Pitch de una oración
+
+Rituo convierte tu intención de enfocarte en una protección concreta, con
+bloqueos programados y la opción de usar un tag físico para volver más consciente
+el desbloqueo.
+
+38.2. Pitch corto
+
+Elegí qué te distrae, definí cuándo querés proteger tu atención y dejá que Rituo
+se ocupe del resto. Podés iniciar un modo en el momento, programar rituales para
+tu semana y sumar un Rituo Tag cuando quieras que salir del foco requiera una
+decisión física.
+
+38.3. Explicación del diferencial NFC
+
+Un botón siempre está dentro del mismo teléfono que genera la distracción.
+Rituo Tag agrega distancia: para desbloquear una protección configurada con NFC,
+tenés que ir hasta el objeto y acercarlo conscientemente.
+
+38.4. Explicación de rituales
+
+Un ritual es una protección recurrente. Elegís días, horario y distracciones;
+Rituo programa la sesión para acompañar una rutina como estudiar, trabajar,
+entrenar o dormir.
+
+38.5. Explicación de privacidad
+
+Rituo usa las capacidades oficiales de Screen Time de Apple. La selección de
+apps se representa mediante tokens protegidos por el sistema y se utiliza para
+aplicar la configuración que el usuario eligió.
+
+38.6. Explicación de las métricas
+
+La sección Foco muestra el tiempo que reservaste, tus sesiones y tu continuidad.
+No busca juzgarte: busca ayudarte a ver qué hábitos te funcionan.
+
+
+39. MAPA DE COMPONENTES DEL REPOSITORIO
+---------------------------------------
+
+Aplicación:
+
+- HolaSwift/HolaSwiftApp.swift
+- HolaSwift/ContentView.swift
+
+Navegación:
+
+- HolaSwift/Views/Navigation/RootTab.swift
+- HolaSwift/Views/Navigation/RituoTabBar.swift
+
+Acceso y legales:
+
+- HolaSwift/Views/Login/LoginLandingView.swift
+- HolaSwift/Views/Login/ProtectionOnboardingView.swift
+- HolaSwift/Views/Login/LoginSupportView.swift
+- HolaSwift/Views/Login/LegalAcceptanceView.swift
+
+Inicio y modo activo:
+
+- HolaSwift/Views/Home/RitualDashboardPage.swift
+- HolaSwift/Views/Home/Components/
+
+Rituales:
+
+- HolaSwift/Views/Rituals/SchedulerListPage.swift
+- HolaSwift/Views/Rituals/SchedulerComposerSheet.swift
+
+Métricas:
+
+- HolaSwift/Views/Focus/FocusSetupPage.swift
+
+Perfil y soporte:
+
+- HolaSwift/Views/Profile/ProfilePage.swift
+- HolaSwift/Views/Profile/SupportSettingsView.swift
+- HolaSwift/Views/Profile/AccountSettingsView.swift
+- HolaSwift/Views/Profile/TagSettingsView.swift
+- HolaSwift/Views/Profile/ProtectionSettingsView.swift
+- HolaSwift/Views/Profile/ProfileSettingsView.swift
+
+Modelos principales:
+
+- HolaSwift/Models/CoreRitualModels.swift
+- HolaSwift/Models/RitualScheduler.swift
+- HolaSwift/Models/FocusMode.swift
+- HolaSwift/Models/BlockDuration.swift
+- Modelos de autenticación, legales, soporte, sincronización y actualización.
+
+Servicios principales:
+
+- HolaSwift/Services/AppEnvironment.swift
+- HolaSwift/Services/CoreApiService.swift
+- HolaSwift/Services/AuthAPIClient.swift
+- HolaSwift/Services/ModeStore.swift
+- HolaSwift/Services/FamilyControlsAuthorizer.swift
+- HolaSwift/Services/DeviceActivityScheduler.swift
+- HolaSwift/Services/ModeBreakActivityScheduler.swift
+- HolaSwift/Services/ModeEndActivityScheduler.swift
+- HolaSwift/Services/AppBlocker.swift
+- HolaSwift/Services/NFCTagReader.swift
+- Servicios de estado compartido, protección estricta, contenido sensible,
+  conectividad, outbox, Keychain y Crashlytics.
+
+Extensiones:
+
+- ShieldConfigurationExtension/
+- RituoDeviceActivityMonitor/
+- RituoSafariContentBlocker/
+
+Código compartido:
+
+- Shared/SensitiveWebDomainCatalog.swift
+- Shared/SafariContentBlockerController.swift
+- Stores compartidos de actividad, estado y notificaciones.
+
+Configuración:
+
+- Config/HolaSwiftInfo.plist
+- Config/*.xcconfig
+- Archivos .entitlements de la app y extensiones.
+
+
+40. CHECKLIST DE CONSISTENCIA PARA CAMBIOS FUTUROS
+--------------------------------------------------
+
+Si cambia la edad mínima:
+
+- Actualizar validación de registro.
+- Actualizar términos.
+- Actualizar privacidad.
+- Revisar clasificación de App Store.
+- Actualizar soporte y comunicación.
+
+Si se agrega un nuevo tipo de dato:
+
+- Documentar finalidad.
+- Revisar minimización.
+- Actualizar política.
+- Actualizar App Privacy.
+- Revisar vinculación y tracking.
+- Revisar eliminación y retención.
+
+Si se agrega un SDK:
+
+- Auditar datos recopilados.
+- Revisar manifiesto de privacidad.
+- Revisar required reason APIs.
+- Actualizar App Privacy si corresponde.
+- Confirmar que no introduce tracking no declarado.
+
+Si se agrega otra extensión de Screen Time:
+
+- Crear App ID explícito.
+- Solicitar o asignar Family Controls Distribution.
+- Agregar App Group si comparte estado.
+- Incorporar entitlements al target correcto.
+- Regenerar perfiles.
+- Validar el archivo de distribución.
+
+Si cambia el comportamiento de NFC:
+
+- Revisar texto de uso.
+- Revisar formatos NFC declarados.
+- Actualizar soporte y demostración de revisión.
+- Probar en dispositivo físico.
+
+Si cambia la lógica de rituales:
+
+- Probar cruces de medianoche.
+- Probar cambio de zona horaria.
+- Probar horario de verano.
+- Probar edición durante una sesión activa.
+- Probar eliminación protegida.
+- Probar funcionamiento sin red.
+
+Si cambia la publicación:
+
+- Actualizar build.
+- Validar Archive.
+- Subir a App Store Connect.
+- Seleccionar el build correcto.
+- Revisar capturas de iPhone e iPad.
+- Revisar idiomas.
+- Revisar privacidad, precio y disponibilidad.
+- Revisar notas para Apple.
+- Elegir publicación manual o automática conscientemente.
+
+
+41. INFORMACIÓN QUE NO DEBE INFERIRSE DE ESTE DOCUMENTO
+-------------------------------------------------------
+
+Este archivo no afirma:
+
+- Que Rituo sea un dispositivo médico.
+- Que cure una adicción o una condición clínica.
+- Que el filtro web sea infalible.
+- Que el tag sea un mecanismo biométrico.
+- Que exista una suscripción paga activa.
+- Que el tag tenga un precio o stock determinado.
+- Que todos los datos del roadmap estén implementados.
+- Que la app continúe pendiente de publicación después del 12 de agosto de 2026.
+- Que la verificación DSA conserve el mismo estado.
+
+Para cualquier comunicación externa, estas cuestiones deben confirmarse con el
+responsable correspondiente.
+
+
+42. CONCLUSIÓN
+--------------
+
+Rituo es un sistema de protección de la atención construido alrededor de una
+idea simple: una persona debería poder decidir cómo quiere usar su teléfono
+antes de quedar atrapada en un comportamiento automático.
+
+La aplicación traduce esa idea en mecanismos concretos:
+
+- Modos que se activan en el momento.
+- Rituales que automatizan hábitos.
+- Restricciones oficiales de Screen Time.
+- Opciones de mayor resistencia a la evasión.
+- Un tag NFC que agrega fricción física cuando el usuario lo elige.
+- Recreos y salidas de emergencia controladas.
+- Métricas que muestran continuidad y tiempo recuperado.
+
+La complejidad técnica de Rituo no está solamente en mostrar una interfaz de
+temporizador. Está en coordinar de manera segura y consistente una app principal,
+extensiones del sistema, permisos especiales de Apple, estado local, ejecución
+en segundo plano y backend, sin perder de vista privacidad y control del usuario.
+
+Ese equilibrio entre intención, automatización y fricción consciente constituye
+el núcleo del producto.

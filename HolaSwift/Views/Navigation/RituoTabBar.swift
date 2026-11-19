@@ -88,7 +88,7 @@ struct RituoFloatingTabBar: View {
                 )
                 .allowsHitTesting(false)
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 14)
         .padding(.bottom, 22)
     }
 
