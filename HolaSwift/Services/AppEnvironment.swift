@@ -20,6 +20,15 @@ enum AppEnvironment {
             preconditionFailure("Missing or invalid \(key) in the app configuration.")
         }
 
+        if name == "local-simulator" {
+            #if DEBUG && targetEnvironment(simulator)
+            precondition(url.host == "127.0.0.1" && scheme == "http",
+                         "Local simulator tests must use loopback APIs.")
+            #else
+            preconditionFailure("Local test configuration is only supported in the Debug simulator.")
+            #endif
+        }
+
         return configuredValue.hasSuffix("/")
             ? String(configuredValue.dropLast())
             : configuredValue

@@ -1,0 +1,5 @@
+// Explicit opt-in via xcodebuild -xcconfig. Never included by Debug or Release.
+// Both APIs must be local; authentication uses a fictional test account.
+APP_ENVIRONMENT[sdk=iphonesimulator*] = local-simulator
+CORE_API_BASE_URL[sdk=iphonesimulator*] = http:/$()/127.0.0.1:3000
+AUTH_API_BASE_URL[sdk=iphonesimulator*] = http:/$()/127.0.0.1:3001

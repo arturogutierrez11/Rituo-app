@@ -164,6 +164,26 @@ struct RitualScheduler: Identifiable, Hashable, Codable {
         return weekdays.contains(previousWeekday) && minutes < end
     }
 
+    /// Start of the occurrence of this ritual that contains `date`, or nil when
+    /// the ritual is not active at that moment. Used to tell whether state saved
+    /// during an earlier occurrence (e.g. breaks already taken) is stale.
+    func occurrenceStart(on date: Date = .now) -> Date? {
+        guard isActive(on: date) else { return nil }
+        let calendar = Calendar.current
+        let minutes = calendar.component(.hour, from: date) * 60 + calendar.component(.minute, from: date)
+        var day = date
+        // Post-midnight part of an overnight window belongs to yesterday's occurrence.
+        if crossesMidnight && minutes < startHour * 60 + startMinute {
+            guard let yesterday = calendar.date(byAdding: .day, value: -1, to: date) else { return nil }
+            day = yesterday
+        }
+        var components = calendar.dateComponents([.year, .month, .day], from: day)
+        components.hour = startHour
+        components.minute = startMinute
+        components.second = 0
+        return calendar.date(from: components)
+    }
+
     func endDate(on date: Date = .now) -> Date? {
         let calendar = Calendar.current
         let weekday = calendar.component(.weekday, from: date)
@@ -354,32 +374,44 @@ extension RitualScheduler {
     var blockedItemsRequest: ReplaceRitualBlockedItemsRequest {
         var items: [RitualBlockedItemRequest] = []
 
-        items += selection.applicationTokens.enumerated().map { index, token in
+        items += selection.applicationTokens
+            .map { Self.encodedTokenIdentifier($0, fallback: "app-unavailable") }
+            .sorted()
+            .enumerated().map { index, identifier in
             RitualBlockedItemRequest(
                 type: "app",
-                identifier: Self.encodedTokenIdentifier(token, fallback: "app-\(index + 1)"),
+                identifier: identifier,
                 displayName: "App \(index + 1)",
                 bundleIdentifier: nil
             )
         }
 
-        items += selection.categoryTokens.enumerated().map { index, token in
+        items += selection.categoryTokens
+            .map { Self.encodedTokenIdentifier($0, fallback: "category-unavailable") }
+            .sorted()
+            .enumerated().map { index, identifier in
             RitualBlockedItemRequest(
                 type: "category",
-                identifier: Self.encodedTokenIdentifier(token, fallback: "category-\(index + 1)"),
+                identifier: identifier,
                 displayName: "Categoria \(index + 1)",
                 bundleIdentifier: nil
             )
         }
 
-        items += selection.webDomainTokens.enumerated().map { index, token in
+        items += selection.webDomainTokens
+            .map { Self.encodedTokenIdentifier($0, fallback: "domain-unavailable") }
+            .sorted()
+            .enumerated().map { index, identifier in
             RitualBlockedItemRequest(
                 type: "domain",
-                identifier: Self.encodedTokenIdentifier(token, fallback: "domain-\(index + 1)"),
+                identifier: identifier,
                 displayName: "Web \(index + 1)",
                 bundleIdentifier: nil
             )
         }
+
+        // Identifiers are ordered before numbering display names, so both stay stable.
+        items.sort { ($0.type, $0.identifier) < ($1.type, $1.identifier) }
 
         return ReplaceRitualBlockedItemsRequest(items: items)
     }
@@ -406,7 +438,9 @@ extension RitualScheduler {
 
 
     private static func encodedTokenIdentifier<T: Encodable>(_ token: T, fallback: String) -> String {
-        guard let data = try? JSONEncoder().encode(token) else {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(token) else {
             return fallback
         }
 

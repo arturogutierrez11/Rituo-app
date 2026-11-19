@@ -58,6 +58,26 @@ final class AppBlocker {
         clear(store: legacyStore)
     }
 
+    @discardableResult
+    func clearOrphanedRitualShield() -> Bool {
+        let hasShield = store.shield.applications != nil
+            || store.shield.applicationCategories != nil
+            || store.shield.webDomains != nil
+            || store.shield.webDomainCategories != nil
+            || store.application.denyAppInstallation == true
+            || store.webContent.blockedByFilter != nil
+            || legacyStore.shield.applications != nil
+            || legacyStore.shield.applicationCategories != nil
+            || legacyStore.shield.webDomains != nil
+            || legacyStore.shield.webDomainCategories != nil
+        if hasShield { clearShield() }
+        return hasShield
+    }
+
+    func clearScheduledStrictModeRestriction() {
+        strictScheduledStore.application.denyAppRemoval = nil
+    }
+
     func clearAllShields() {
         clearShield()
         clearModeShield()

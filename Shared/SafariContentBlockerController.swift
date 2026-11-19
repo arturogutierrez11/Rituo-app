@@ -12,15 +12,24 @@ enum SafariContentBlockerController {
         defaults?.set(isEnabled, forKey: enabledDefaultsKey)
         defaults?.synchronize()
 
+        let startedAt = ProcessInfo.processInfo.systemUptime
+        let requestID = UUID().uuidString
+        #if DEBUG
+        print("Safari reload start id=\(requestID) enabled=\(isEnabled)")
+        #endif
         SFContentBlockerManager.reloadContentBlocker(
             withIdentifier: extensionIdentifier
         ) { error in
+            let elapsedMs = Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000)
             if let error {
-                print("Safari content blocker reload error:", error.localizedDescription)
+                let nsError = error as NSError
+                print("Safari reload failed id=\(requestID) enabled=\(isEnabled) elapsed_ms=\(elapsedMs) domain=\(nsError.domain) code=\(nsError.code) description=\(nsError.localizedDescription) reason=\(nsError.localizedFailureReason ?? "none")")
                 return
             }
 
-            print("Safari content blocker reloaded. Blocking enabled:", isEnabled)
+            #if DEBUG
+            print("Safari reload completed id=\(requestID) enabled=\(isEnabled) elapsed_ms=\(elapsedMs)")
+            #endif
             logExtensionState()
         }
     }
@@ -47,7 +56,9 @@ enum SafariContentBlockerController {
                 return
             }
 
+            #if DEBUG
             print("Safari content blocker extension enabled:", state?.isEnabled == true)
+            #endif
         }
     }
 }

@@ -1,13 +1,15 @@
 import DeviceActivity
 import Foundation
 
-final class ModeEndActivityScheduler: @unchecked Sendable {
+@MainActor
+final class ModeEndActivityScheduler {
     static let activityNamePrefix = "rituo.modeEnd."
 
     private static let scheduledNameKey = "rituo.modeEndActivityName"
     private static let scheduledEndDateKey = "rituo.modeEndDate"
 
-    private let center = DeviceActivityCenter()
+    private let monitor = DeviceActivityMonitorExecutor()
+    private let workQueue = DeviceActivityOperationQueue()
     private let calendar = Calendar.current
     private let metadataStore = SharedRitualActivityMetadataStore()
     private let debugStore = DeviceActivityDebugStore()
@@ -27,9 +29,9 @@ final class ModeEndActivityScheduler: @unchecked Sendable {
         at endDate: Date
     ) async throws {
         try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async { [self] in
+            workQueue.submit { [self] in
                 do {
-                    try scheduleModeEndSynchronously(
+                    try await performScheduleModeEnd(
                         for: mode,
                         accountID: accountID,
                         at: endDate
@@ -42,12 +44,12 @@ final class ModeEndActivityScheduler: @unchecked Sendable {
         }
     }
 
-    private func scheduleModeEndSynchronously(
+    private func performScheduleModeEnd(
         for mode: FocusMode,
         accountID: String?,
         at endDate: Date
-    ) throws {
-        cancelCurrent()
+    ) async throws {
+        await performCancel()
 
         let now = Date()
         guard endDate.timeIntervalSince(now) >= 15 * 60 else {
@@ -86,7 +88,9 @@ final class ModeEndActivityScheduler: @unchecked Sendable {
         )
 
         do {
-            try center.startMonitoring(activityName, during: schedule)
+            let monitorSpan = AppDiagnostics.shared.begin("device_activity.ModeEndActivityScheduler.start")
+            defer { AppDiagnostics.shared.end("device_activity.ModeEndActivityScheduler.start", monitorSpan) }
+            try await monitor.start(activityName.rawValue, schedule: schedule)
             defaults.set(activityName.rawValue, forKey: Self.scheduledNameKey)
             defaults.set(endDate, forKey: Self.scheduledEndDateKey)
             debugStore.log(
@@ -99,10 +103,16 @@ final class ModeEndActivityScheduler: @unchecked Sendable {
     }
 
     func cancelCurrent() {
+        workQueue.submit { [self] in await performCancel() }
+    }
+
+    private func performCancel() async {
         if let storedName = defaults.string(forKey: Self.scheduledNameKey) {
             let activityName = DeviceActivityName(storedName)
-            center.stopMonitoring([activityName])
+            let monitorSpan = AppDiagnostics.shared.begin("device_activity.ModeEndActivityScheduler.stop")
+            defer { AppDiagnostics.shared.end("device_activity.ModeEndActivityScheduler.stop", monitorSpan) }
             metadataStore.removeMetadata(for: storedName)
+            await monitor.stop([activityName.rawValue])
             debugStore.log("Fin automático de modo cancelado \(storedName).")
         }
 

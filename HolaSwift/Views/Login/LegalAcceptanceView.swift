@@ -194,60 +194,6 @@ struct LegalAcceptanceView: View {
     }
 }
 
-struct LegalRequirementsLoadingView: View {
-    @ObservedObject var authViewModel: AuthViewModel
-
-    var body: some View {
-        ZStack {
-            RituoAnimatedBackground()
-
-            VStack(spacing: 24) {
-                Image("RituoLogoWhite")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 154)
-
-                if authViewModel.isLoadingLegalRequirements ||
-                    authViewModel.legalRequirementsError == nil {
-                    ProgressView()
-                        .tint(RituoPalette.white)
-
-                    Text("Verificando documentos vigentes…")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(RituoPalette.white.opacity(0.52))
-                } else {
-                    Image(systemName: "wifi.exclamationmark")
-                        .font(.system(size: 34))
-                        .foregroundStyle(RituoPalette.lightBlue)
-
-                    Text(authViewModel.legalRequirementsError ?? "")
-                        .font(.system(size: 15))
-                        .foregroundStyle(RituoPalette.white.opacity(0.70))
-                        .multilineTextAlignment(.center)
-                        .lineSpacing(4)
-
-                    Button("Volver a intentar") {
-                        Task { await authViewModel.loadLegalRequirements() }
-                    }
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(RituoPalette.deepOceanBlue)
-                    .padding(.horizontal, 28)
-                    .frame(minHeight: 52)
-                    .background(RituoPalette.white)
-                    .clipShape(Capsule())
-
-                    Button("Cerrar sesión") {
-                        authViewModel.signOut()
-                    }
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(RituoPalette.white.opacity(0.46))
-                }
-            }
-            .padding(28)
-        }
-    }
-}
-
 struct LegalDocumentDetailView: View {
     let document: LegalDocumentResponse
     @Environment(\.dismiss) private var dismiss

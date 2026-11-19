@@ -1,13 +1,15 @@
 import DeviceActivity
 import Foundation
 
+@MainActor
 final class ModeBreakActivityScheduler {
     static let activityNamePrefix = "rituo.modeBreakEnd."
 
     private static let scheduledNameKey = "rituo.modeBreakActivityName"
     private static let minimumMonitorDuration: TimeInterval = 15 * 60
 
-    private let center = DeviceActivityCenter()
+    private let monitor = DeviceActivityMonitorExecutor()
+    private let workQueue = DeviceActivityOperationQueue()
     private let calendar = Calendar.current
     private let selectionStore = SharedRitualSelectionStore()
     private let metadataStore = SharedRitualActivityMetadataStore()
@@ -19,8 +21,20 @@ final class ModeBreakActivityScheduler {
         self.defaults = defaults
     }
 
-    func scheduleBreakEnd(for mode: FocusMode, accountID: String?, until breakUntil: Date) throws {
-        cancelCurrent()
+    func scheduleBreakEnd(for mode: FocusMode, accountID: String?, until breakUntil: Date,
+                          completion: @escaping @MainActor @Sendable (Error?) -> Void) {
+        workQueue.submit { [self] in
+            do {
+                try await performScheduleBreakEnd(for: mode, accountID: accountID, until: breakUntil)
+                completion(nil)
+            } catch {
+                completion(error)
+            }
+        }
+    }
+
+    private func performScheduleBreakEnd(for mode: FocusMode, accountID: String?, until breakUntil: Date) async throws {
+        await performCancel()
 
         let activityName = DeviceActivityName(Self.activityNamePrefix + UUID().uuidString)
         try selectionStore.save(selection: mode.selection, for: activityName.rawValue)
@@ -64,13 +78,24 @@ final class ModeBreakActivityScheduler {
             )
         )
 
-        try center.startMonitoring(activityName, during: schedule)
+        let monitorSpan = AppDiagnostics.shared.begin("device_activity.ModeBreakActivityScheduler.start")
+        defer { AppDiagnostics.shared.end("device_activity.ModeBreakActivityScheduler.start", monitorSpan) }
         defaults.set(activityName.rawValue, forKey: Self.scheduledNameKey)
         suppressionStore.setModeBreakActivityName(activityName.rawValue)
+        do {
+            try await monitor.start(activityName.rawValue, schedule: schedule)
+        } catch {
+            await performCancel()
+            throw error
+        }
         debugStore.log("Recreo de modo programado con DeviceActivity \(activityName.rawValue) desde \(now) hasta \(monitorEndDate), warning en \(warningLeadTime)s.")
     }
 
     func cancelCurrent() {
+        workQueue.submit { [self] in await performCancel() }
+    }
+
+    private func performCancel() async {
         guard let storedName =
             defaults.string(forKey: Self.scheduledNameKey)
             ?? suppressionStore.modeBreakActivityName() else {
@@ -78,11 +103,14 @@ final class ModeBreakActivityScheduler {
         }
 
         let activityName = DeviceActivityName(storedName)
-        center.stopMonitoring([activityName])
+        let monitorSpan = AppDiagnostics.shared.begin("device_activity.ModeBreakActivityScheduler.stop")
+        defer { AppDiagnostics.shared.end("device_activity.ModeBreakActivityScheduler.stop", monitorSpan) }
+        // Invalidate the callback before asking Screen Time to stop it.
         selectionStore.removeSelection(for: storedName)
         metadataStore.removeMetadata(for: storedName)
         defaults.removeObject(forKey: Self.scheduledNameKey)
         suppressionStore.setModeBreakActivityName(nil)
+        await monitor.stop([activityName.rawValue])
         debugStore.log("Recreo de modo cancelado \(storedName).")
     }
 }

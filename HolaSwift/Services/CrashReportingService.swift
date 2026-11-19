@@ -6,6 +6,10 @@ enum CrashReportingService {
     private static var isConfigured = false
 
     static func configure(bundle: Bundle = .main) {
+        #if DEBUG && targetEnvironment(simulator)
+        // Keep fictional local tests out of the production Firebase project.
+        if AppEnvironment.name == "local-simulator" { return }
+        #endif
         guard !isConfigured else {
             return
         }

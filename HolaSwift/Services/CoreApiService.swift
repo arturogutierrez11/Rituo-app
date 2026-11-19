@@ -83,7 +83,6 @@ final class CoreApiService {
     private let baseURLString = AppEnvironment.coreAPIBaseURL
     private let requestTimeout: TimeInterval = 12
     private let tokenStore = KeychainTokenStore.shared
-    private var refreshedAccessToken: String?
 
     private init() {}
 
@@ -113,7 +112,7 @@ final class CoreApiService {
         request.setValue("no-cache", forHTTPHeaderField: "Pragma")
 
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(AppUpdateStatusResponse.self, from: data)
+        return try DiagnosticHTTP.decode(AppUpdateStatusResponse.self, from: data)
     }
 
     func getPendingSupportReset(accessToken: String) async throws -> SupportResetResponse? {
@@ -126,7 +125,7 @@ final class CoreApiService {
         if data.isEmpty || String(data: data, encoding: .utf8) == "null" {
             return nil
         }
-        return try JSONDecoder().decode(SupportResetResponse.self, from: data)
+        return try DiagnosticHTTP.decode(SupportResetResponse.self, from: data)
     }
 
     func acknowledgeSupportReset(
@@ -155,7 +154,7 @@ final class CoreApiService {
             accessToken: accessToken
         )
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(LegalRequirementsResponse.self, from: data)
+        return try DiagnosticHTTP.decode(LegalRequirementsResponse.self, from: data)
     }
 
     func acceptLegalDocuments(
@@ -171,19 +170,19 @@ final class CoreApiService {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(LegalRequirementsResponse.self, from: data)
+        return try DiagnosticHTTP.decode(LegalRequirementsResponse.self, from: data)
     }
 
     func listRituals(accessToken: String) async throws -> [RitualResponse] {
         let request = try makeRequest(path: "/rituals", method: "GET", accessToken: accessToken)
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode([RitualResponse].self, from: data)
+        return try DiagnosticHTTP.decode([RitualResponse].self, from: data)
     }
 
     func getRitual(accessToken: String, ritualId: String) async throws -> RitualResponse {
         let request = try makeRequest(path: "/rituals/\(ritualId)", method: "GET", accessToken: accessToken)
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(RitualResponse.self, from: data)
+        return try DiagnosticHTTP.decode(RitualResponse.self, from: data)
     }
 
     func createRitual(
@@ -199,7 +198,7 @@ final class CoreApiService {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(RitualResponse.self, from: data)
+        return try DiagnosticHTTP.decode(RitualResponse.self, from: data)
     }
 
 
@@ -217,7 +216,7 @@ final class CoreApiService {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(RitualResponse.self, from: data)
+        return try DiagnosticHTTP.decode(RitualResponse.self, from: data)
     }
 
     func deleteRitual(
@@ -239,7 +238,7 @@ final class CoreApiService {
     func listRitualBlockedItems(accessToken: String, ritualId: String) async throws -> [RitualBlockedItemResponse] {
         let request = try makeRequest(path: "/rituals/\(ritualId)/blocked-items?platform=ios", method: "GET", accessToken: accessToken)
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode([RitualBlockedItemResponse].self, from: data)
+        return try DiagnosticHTTP.decode([RitualBlockedItemResponse].self, from: data)
     }
 
     func replaceRitualBlockedItems(
@@ -256,13 +255,13 @@ final class CoreApiService {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode([RitualBlockedItemResponse].self, from: data)
+        return try DiagnosticHTTP.decode([RitualBlockedItemResponse].self, from: data)
     }
 
     func getRitualBreakConfig(accessToken: String, ritualId: String) async throws -> RitualBreakConfigResponse {
         let request = try makeRequest(path: "/rituals/\(ritualId)/breaks", method: "GET", accessToken: accessToken)
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(RitualBreakConfigResponse.self, from: data)
+        return try DiagnosticHTTP.decode(RitualBreakConfigResponse.self, from: data)
     }
 
     func saveRitualBreakConfig(
@@ -275,13 +274,13 @@ final class CoreApiService {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(RitualBreakConfigResponse.self, from: data)
+        return try DiagnosticHTTP.decode(RitualBreakConfigResponse.self, from: data)
     }
 
     func listModes(accessToken: String) async throws -> [ModeResponse] {
         let request = try makeRequest(path: "/modes", method: "GET", accessToken: accessToken)
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode([ModeResponse].self, from: data)
+        return try DiagnosticHTTP.decode([ModeResponse].self, from: data)
     }
 
     func updateMode(
@@ -298,7 +297,7 @@ final class CoreApiService {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(ModeResponse.self, from: data)
+        return try DiagnosticHTTP.decode(ModeResponse.self, from: data)
     }
 
     func renameMode(
@@ -315,13 +314,13 @@ final class CoreApiService {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(ModeResponse.self, from: data)
+        return try DiagnosticHTTP.decode(ModeResponse.self, from: data)
     }
 
     func listModeBlockedItems(accessToken: String, modeId: String) async throws -> [ModeBlockedItemResponse] {
         let request = try makeRequest(path: "/modes/\(modeId)/blocked-items?platform=ios", method: "GET", accessToken: accessToken)
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode([ModeBlockedItemResponse].self, from: data)
+        return try DiagnosticHTTP.decode([ModeBlockedItemResponse].self, from: data)
     }
 
     func replaceModeBlockedItems(
@@ -338,13 +337,13 @@ final class CoreApiService {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode([ModeBlockedItemResponse].self, from: data)
+        return try DiagnosticHTTP.decode([ModeBlockedItemResponse].self, from: data)
     }
 
     func getModeBreakConfig(accessToken: String, modeId: String) async throws -> ModeBreakConfigResponse {
         let request = try makeRequest(path: "/modes/\(modeId)/breaks", method: "GET", accessToken: accessToken)
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(ModeBreakConfigResponse.self, from: data)
+        return try DiagnosticHTTP.decode(ModeBreakConfigResponse.self, from: data)
     }
 
     func saveModeBreakConfig(
@@ -357,7 +356,7 @@ final class CoreApiService {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(ModeBreakConfigResponse.self, from: data)
+        return try DiagnosticHTTP.decode(ModeBreakConfigResponse.self, from: data)
     }
 
 
@@ -367,7 +366,7 @@ final class CoreApiService {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(RitualSessionResponse.self, from: data)
+        return try DiagnosticHTTP.decode(RitualSessionResponse.self, from: data)
     }
 
     func getActiveRitualSession(accessToken: String) async throws -> RitualSessionResponse? {
@@ -378,19 +377,19 @@ final class CoreApiService {
             return nil
         }
 
-        return try JSONDecoder().decode(RitualSessionResponse.self, from: data)
+        return try DiagnosticHTTP.decode(RitualSessionResponse.self, from: data)
     }
 
     func getRitualSessionSummary(accessToken: String) async throws -> RitualSessionSummaryResponse {
         let request = try makeRequest(path: "/ritual-sessions/summary", method: "GET", accessToken: accessToken)
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(RitualSessionSummaryResponse.self, from: data)
+        return try DiagnosticHTTP.decode(RitualSessionSummaryResponse.self, from: data)
     }
 
     func listRitualSessionsByRitual(accessToken: String, ritualId: String) async throws -> [RitualSessionResponse] {
         let request = try makeRequest(path: "/ritual-sessions/ritual/\(ritualId)", method: "GET", accessToken: accessToken)
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode([RitualSessionResponse].self, from: data)
+        return try DiagnosticHTTP.decode([RitualSessionResponse].self, from: data)
     }
 
     func recordRitualSession(
@@ -406,7 +405,7 @@ final class CoreApiService {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(RitualSessionResponse.self, from: data)
+        return try DiagnosticHTTP.decode(RitualSessionResponse.self, from: data)
     }
 
     func finishRitualSession(
@@ -423,7 +422,7 @@ final class CoreApiService {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(RitualSessionResponse.self, from: data)
+        return try DiagnosticHTTP.decode(RitualSessionResponse.self, from: data)
     }
 
     func startModeSession(accessToken: String, body: StartModeSessionRequest) async throws -> ModeSessionResponse {
@@ -432,7 +431,7 @@ final class CoreApiService {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(ModeSessionResponse.self, from: data)
+        return try DiagnosticHTTP.decode(ModeSessionResponse.self, from: data)
     }
 
     func getActiveModeSession(accessToken: String) async throws -> ModeSessionResponse? {
@@ -443,7 +442,7 @@ final class CoreApiService {
             return nil
         }
 
-        return try JSONDecoder().decode(ModeSessionResponse.self, from: data)
+        return try DiagnosticHTTP.decode(ModeSessionResponse.self, from: data)
     }
 
     func getActiveFocusSession(accessToken: String) async throws -> ActiveFocusSessionResponse? {
@@ -454,7 +453,7 @@ final class CoreApiService {
             return nil
         }
 
-        return try JSONDecoder().decode(ActiveFocusSessionResponse.self, from: data)
+        return try DiagnosticHTTP.decode(ActiveFocusSessionResponse.self, from: data)
     }
 
     func getEmergencyUnlockStatus(accessToken: String) async throws -> EmergencyUnlockStatusResponse {
@@ -464,7 +463,7 @@ final class CoreApiService {
             accessToken: accessToken
         )
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(EmergencyUnlockStatusResponse.self, from: data)
+        return try DiagnosticHTTP.decode(EmergencyUnlockStatusResponse.self, from: data)
     }
 
     func useEmergencyUnlock(
@@ -482,25 +481,31 @@ final class CoreApiService {
         )
 
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(EmergencyUnlockResponse.self, from: data)
+        return try DiagnosticHTTP.decode(EmergencyUnlockResponse.self, from: data)
     }
 
     func getModeSessionSummary(accessToken: String) async throws -> ModeSessionSummaryResponse {
         let request = try makeRequest(path: "/mode-sessions/summary", method: "GET", accessToken: accessToken)
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(ModeSessionSummaryResponse.self, from: data)
+        return try DiagnosticHTTP.decode(ModeSessionSummaryResponse.self, from: data)
     }
 
     func getFocusMetricsSummary(accessToken: String) async throws -> FocusMetricsSummaryResponse {
         let request = try makeRequest(path: "/focus-metrics/summary", method: "GET", accessToken: accessToken)
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(FocusMetricsSummaryResponse.self, from: data)
+        return try DiagnosticHTTP.decode(FocusMetricsSummaryResponse.self, from: data)
+    }
+
+    func getRanking(accessToken: String) async throws -> RankingResponse {
+        let request = try makeRequest(path: "/ranking", method: "GET", accessToken: accessToken)
+        let (data, _) = try await send(request)
+        return try DiagnosticHTTP.decode(RankingResponse.self, from: data)
     }
 
     func listModeSessionsByMode(accessToken: String, modeId: String) async throws -> [ModeSessionResponse] {
         let request = try makeRequest(path: "/mode-sessions/mode/\(modeId)", method: "GET", accessToken: accessToken)
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode([ModeSessionResponse].self, from: data)
+        return try DiagnosticHTTP.decode([ModeSessionResponse].self, from: data)
     }
 
     func finishModeSession(
@@ -517,13 +522,13 @@ final class CoreApiService {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(ModeSessionResponse.self, from: data)
+        return try DiagnosticHTTP.decode(ModeSessionResponse.self, from: data)
     }
 
     func listNfcTagClaims(accessToken: String) async throws -> [NfcTagClaimResponse] {
         let request = try makeRequest(path: "/nfc-tags/me", method: "GET", accessToken: accessToken)
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode([NfcTagClaimResponse].self, from: data)
+        return try DiagnosticHTTP.decode([NfcTagClaimResponse].self, from: data)
     }
 
     func claimNfcTag(accessToken: String, body: ClaimNfcTagRequest) async throws -> NfcTagClaimResponse {
@@ -532,7 +537,7 @@ final class CoreApiService {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(NfcTagClaimResponse.self, from: data)
+        return try DiagnosticHTTP.decode(NfcTagClaimResponse.self, from: data)
     }
 
     func verifyNfcTag(accessToken: String, body: VerifyNfcTagRequest) async throws -> VerifyNfcTagResponse {
@@ -541,7 +546,7 @@ final class CoreApiService {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(VerifyNfcTagResponse.self, from: data)
+        return try DiagnosticHTTP.decode(VerifyNfcTagResponse.self, from: data)
     }
 
     func prepareReviewDemoTag(accessToken: String) async throws -> ReviewDemoTagResponse {
@@ -551,7 +556,7 @@ final class CoreApiService {
             accessToken: accessToken
         )
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(ReviewDemoTagResponse.self, from: data)
+        return try DiagnosticHTTP.decode(ReviewDemoTagResponse.self, from: data)
     }
 
     func updateNfcTagClaim(
@@ -568,7 +573,7 @@ final class CoreApiService {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(NfcTagClaimResponse.self, from: data)
+        return try DiagnosticHTTP.decode(NfcTagClaimResponse.self, from: data)
     }
 
     func revokeNfcTagClaim(accessToken: String, claimId: String) async throws {
@@ -589,7 +594,7 @@ final class CoreApiService {
         request.httpMethod = method
         request.timeoutInterval = requestTimeout
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.setValue("Bearer \(refreshedAccessToken ?? accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(try SessionTokenCoordinator.shared.accessToken(for: accessToken))", forHTTPHeaderField: "Authorization")
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         request.setValue("no-cache", forHTTPHeaderField: "Pragma")
         return request
@@ -645,7 +650,7 @@ final class CoreApiService {
         let response: URLResponse
 
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await DiagnosticHTTP.data(for: request)
         } catch {
             throw mapNetworkError(error)
         }
@@ -654,22 +659,19 @@ final class CoreApiService {
             throw CoreAPIError.invalidResponse
         }
 
+        #if DEBUG
         print("\(request.httpMethod ?? "GET") \(request.url?.path ?? "") status:", httpResponse.statusCode)
+        #endif
         return (data, httpResponse)
     }
 
     private func refreshedRequest(from request: URLRequest) async throws -> URLRequest? {
-        guard let refreshToken = tokenStore.loadRefreshToken() else {
-            return nil
-        }
-
-        let tokens = try await AuthAPIClient.shared.refreshTokens(refreshToken: refreshToken)
-        try tokenStore.save(accessToken: tokens.accessToken, refreshToken: tokens.refreshToken)
-        refreshedAccessToken = tokens.accessToken
-
+        guard let authorization = request.value(forHTTPHeaderField: "Authorization"),
+              authorization.hasPrefix("Bearer ") else { return nil }
+        let suppliedToken = String(authorization.dropFirst("Bearer ".count))
+        let tokens = try await SessionTokenCoordinator.shared.refresh(accessToken: suppliedToken)
         var retryRequest = request
         retryRequest.setValue("Bearer \(tokens.accessToken)", forHTTPHeaderField: "Authorization")
-        print("core-api token refreshed; retrying \(request.url?.path ?? "request")")
         return retryRequest
     }
 

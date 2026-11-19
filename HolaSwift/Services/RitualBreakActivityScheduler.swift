@@ -1,13 +1,15 @@
 import DeviceActivity
 import Foundation
 
+@MainActor
 final class RitualBreakActivityScheduler {
     static let activityNamePrefix = "rituo.ritualBreakEnd."
 
     private static let scheduledNameKey = "rituo.ritualBreakActivityName"
     private static let minimumMonitorDuration: TimeInterval = 15 * 60
 
-    private let center = DeviceActivityCenter()
+    private let monitor = DeviceActivityMonitorExecutor()
+    private let workQueue = DeviceActivityOperationQueue()
     private let calendar = Calendar.current
     private let selectionStore = SharedRitualSelectionStore()
     private let metadataStore = SharedRitualActivityMetadataStore()
@@ -19,8 +21,20 @@ final class RitualBreakActivityScheduler {
         self.defaults = defaults
     }
 
-    func scheduleBreakEnd(for scheduler: RitualScheduler, accountID: String?, until breakUntil: Date) throws {
-        cancelCurrent()
+    func scheduleBreakEnd(for scheduler: RitualScheduler, accountID: String?, until breakUntil: Date,
+                          completion: @escaping @MainActor @Sendable (Error?) -> Void) {
+        workQueue.submit { [self] in
+            do {
+                try await performScheduleBreakEnd(for: scheduler, accountID: accountID, until: breakUntil)
+                completion(nil)
+            } catch {
+                completion(error)
+            }
+        }
+    }
+
+    private func performScheduleBreakEnd(for scheduler: RitualScheduler, accountID: String?, until breakUntil: Date) async throws {
+        await performCancel()
 
         let activityName = DeviceActivityName(Self.activityNamePrefix + UUID().uuidString)
         try selectionStore.save(selection: scheduler.selection, for: activityName.rawValue)
@@ -64,13 +78,24 @@ final class RitualBreakActivityScheduler {
             )
         )
 
-        try center.startMonitoring(activityName, during: schedule)
+        let monitorSpan = AppDiagnostics.shared.begin("device_activity.RitualBreakActivityScheduler.start")
+        defer { AppDiagnostics.shared.end("device_activity.RitualBreakActivityScheduler.start", monitorSpan) }
         defaults.set(activityName.rawValue, forKey: Self.scheduledNameKey)
         suppressionStore.setRitualBreakActivityName(activityName.rawValue)
+        do {
+            try await monitor.start(activityName.rawValue, schedule: schedule)
+        } catch {
+            await performCancel()
+            throw error
+        }
         debugStore.log("Recreo de ritual programado con DeviceActivity \(activityName.rawValue) desde \(now) hasta \(monitorEndDate), warning en \(warningLeadTime)s.")
     }
 
     func cancelCurrent() {
+        workQueue.submit { [self] in await performCancel() }
+    }
+
+    private func performCancel() async {
         guard let storedName =
             defaults.string(forKey: Self.scheduledNameKey)
             ?? suppressionStore.ritualBreakActivityName() else {
@@ -78,11 +103,14 @@ final class RitualBreakActivityScheduler {
         }
 
         let activityName = DeviceActivityName(storedName)
-        center.stopMonitoring([activityName])
+        let monitorSpan = AppDiagnostics.shared.begin("device_activity.RitualBreakActivityScheduler.stop")
+        defer { AppDiagnostics.shared.end("device_activity.RitualBreakActivityScheduler.stop", monitorSpan) }
+        // Invalidate the callback before asking Screen Time to stop it.
         selectionStore.removeSelection(for: storedName)
         metadataStore.removeMetadata(for: storedName)
         defaults.removeObject(forKey: Self.scheduledNameKey)
         suppressionStore.setRitualBreakActivityName(nil)
+        await monitor.stop([activityName.rawValue])
         debugStore.log("Recreo de ritual cancelado \(storedName).")
     }
 }

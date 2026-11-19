@@ -10,32 +10,44 @@ import Foundation
 /// (see `RituoDeviceActivityMonitor.maintainHeartbeat`). This scheduler only
 /// needs to kick off the first occurrence when blocking starts, and cancel
 /// it when blocking ends normally.
+@MainActor
 final class BlockingHeartbeatScheduler {
     static let activityNamePrefix = "rituo.heartbeat."
     static let interval: TimeInterval = 2 * 60 * 60
 
-    private let center = DeviceActivityCenter()
+    private let monitor = DeviceActivityMonitorExecutor()
+    private let workQueue = DeviceActivityOperationQueue()
     private let calendar = Calendar.current
     private let suppressionStore = SharedRitualSuppressionStore()
     private let debugStore = DeviceActivityDebugStore()
 
     func scheduleIfNeeded() {
+        workQueue.submit { [self] in await performScheduleIfNeeded() }
+    }
+
+    private func performScheduleIfNeeded() async {
         guard suppressionStore.heartbeatActivityName() == nil else { return }
         do {
-            try schedule()
+            try await schedule()
         } catch {
             debugStore.log("No se pudo programar el latido de bloqueo: \(error.localizedDescription)")
         }
     }
 
     func cancelCurrent() {
+        workQueue.submit { [self] in await performCancel() }
+    }
+
+    private func performCancel() async {
         guard let storedName = suppressionStore.heartbeatActivityName() else { return }
-        center.stopMonitoring([DeviceActivityName(storedName)])
         suppressionStore.setHeartbeatActivityName(nil)
+        let monitorSpan = AppDiagnostics.shared.begin("device_activity.BlockingHeartbeatScheduler.stop")
+        defer { AppDiagnostics.shared.end("device_activity.BlockingHeartbeatScheduler.stop", monitorSpan) }
+        await monitor.stop([storedName])
         debugStore.log("Latido de bloqueo cancelado \(storedName).")
     }
 
-    private func schedule() throws {
+    private func schedule() async throws {
         let activityName = DeviceActivityName(Self.activityNamePrefix + UUID().uuidString)
         let now = Date()
         let end = now.addingTimeInterval(Self.interval)
@@ -51,8 +63,16 @@ final class BlockingHeartbeatScheduler {
             repeats: false
         )
 
-        try center.startMonitoring(activityName, during: schedule)
         suppressionStore.setHeartbeatActivityName(activityName.rawValue)
+        suppressionStore.setHeartbeatExpiration(end)
+        do {
+            let monitorSpan = AppDiagnostics.shared.begin("device_activity.BlockingHeartbeatScheduler.start")
+            defer { AppDiagnostics.shared.end("device_activity.BlockingHeartbeatScheduler.start", monitorSpan) }
+            try await monitor.start(activityName.rawValue, schedule: schedule)
+        } catch {
+            suppressionStore.setHeartbeatActivityName(nil)
+            throw error
+        }
         debugStore.log("Latido de bloqueo programado \(activityName.rawValue) hasta \(end).")
     }
 }

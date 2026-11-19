@@ -523,11 +523,17 @@ struct ProtectionOnboardingView: View {
     }
 
     private var screenTimeStatusText: String {
-        switch authorizationCenter.authorizationStatus {
+        let status = authorizationCenter.authorizationStatus
+        // iOS 26.4 added a variant of "approved"; it is still an authorization.
+        if #available(iOS 26.4, *), status == .approvedWithDataAccess {
+            return "Autorizado"
+        }
+
+        switch status {
         case .approved: return "Autorizado"
         case .denied: return "Acceso denegado"
         case .notDetermined: return "Todavía no solicitado"
-        @unknown default: return "Estado desconocido"
+        default: return "Estado desconocido"
         }
     }
 

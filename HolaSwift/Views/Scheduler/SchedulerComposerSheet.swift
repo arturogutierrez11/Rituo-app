@@ -275,7 +275,7 @@ struct SchedulerComposerSheet: View {
                                             Text("Modo estricto")
                                                 .font(.system(size: 15, weight: .semibold))
                                                 .foregroundStyle(RituoPalette.white)
-                                            Text("Impide eliminar rituo mientras este ritual esté activo.")
+                                            Text("Bloquea la eliminación de todas las apps del dispositivo, incluida rituo, mientras este ritual esté activo.")
                                                 .font(.system(size: 12))
                                                 .foregroundStyle(RituoPalette.white.opacity(0.35))
                                         }

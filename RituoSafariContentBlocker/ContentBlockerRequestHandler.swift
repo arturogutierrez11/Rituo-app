@@ -31,12 +31,14 @@ final class ContentBlockerRequestHandler: NSObject, NSExtensionRequestHandling {
             isDirectory: false
         )
         try data.write(to: rulesURL, options: .atomic)
+        #if DEBUG
         print(
             "Safari content blocker supplied",
             rules.count,
             "rule(s). Blocking enabled:",
             isEnabled
         )
+        #endif
         return rulesURL
     }
 

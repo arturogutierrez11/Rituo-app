@@ -1,6 +1,10 @@
 import SwiftUI
 
 struct SupportSettingsView: View {
+    @State private var diagnosticURL: URL?
+    @State private var isExporting = false
+    @State private var exportFailed = false
+
     var body: some View {
         VStack(spacing: 0) {
             profileSectionLabel("Soporte")
@@ -40,6 +44,26 @@ struct SupportSettingsView: View {
                 )
             }
             .background(profileCardBg)
+
+            Button(isExporting ? "Preparando diagnóstico…" : "Preparar diagnóstico") {
+                isExporting = true
+                exportFailed = false
+                diagnosticURL = nil
+                Task {
+                    defer { isExporting = false }
+                    do { diagnosticURL = try await AppDiagnostics.shared.export(deviceActivityEvents: DeviceActivityDebugStore().latestEvents(limit: 256)) }
+                    catch { exportFailed = true }
+                }
+            }
+            .disabled(isExporting)
+            .padding(.top, 16)
+            if let diagnosticURL {
+                ShareLink("Compartir diagnóstico", item: diagnosticURL)
+                    .padding(.top, 8)
+            }
+            if exportFailed {
+                Text("No se pudo preparar el archivo. Volvé a intentar.")
+            }
         }
     }
 

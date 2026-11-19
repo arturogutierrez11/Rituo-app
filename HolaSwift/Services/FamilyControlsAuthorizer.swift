@@ -10,14 +10,20 @@ final class FamilyControlsAuthorizer {
     }
 
     var statusText: String {
-        switch center.authorizationStatus {
+        let status = center.authorizationStatus
+        // iOS 26.4 added a variant of "approved"; it is still an authorization.
+        if #available(iOS 26.4, *), status == .approvedWithDataAccess {
+            return "Autorizado"
+        }
+
+        switch status {
         case .approved:
             return "Autorizado"
         case .denied:
             return "Denegado"
         case .notDetermined:
             return "Todavia no solicitado"
-        @unknown default:
+        default:
             return "Estado desconocido"
         }
     }

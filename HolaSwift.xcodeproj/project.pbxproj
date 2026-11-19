@@ -20,6 +20,7 @@
 		C0DEC0012FA2000000000011 /* SafariServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C0DEC0012FA200000000000F /* SafariServices.framework */; };
 		C0DEF1002FA4000000000001 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = C0DEF1002FA4000000000004 /* FirebaseCrashlytics */; };
 		C0DEF1002FA4000000000005 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = C0DEF1002FA4000000000006 /* FirebaseCore */; };
+		C0DEFACE2FA600000000000B /* RituoLiveActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C0DEFACE2FA6000000000001 /* RituoLiveActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -44,6 +45,13 @@
 			remoteGlobalIDString = C0DEC0012FA2000000000004;
 			remoteInfo = RituoSafariContentBlocker;
 		};
+		C0DEFACE2FA600000000000C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9DC417D82F9BE93400782FEC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C0DEFACE2FA6000000000004;
+			remoteInfo = RituoLiveActivity;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -56,6 +64,7 @@
 				9DC418392F9C35F400782FEC /* ShieldConfigurationExtension.appex in Embed Foundation Extensions */,
 				9DC41A032F9E000000782FEC /* RituoDeviceActivityMonitor.appex in Embed Foundation Extensions */,
 				C0DEC0012FA200000000000B /* RituoSafariContentBlocker.appex in Embed Foundation Extensions */,
+				C0DEFACE2FA600000000000B /* RituoLiveActivity.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -74,6 +83,7 @@
 		C0DEC0CF2FA3000000000001 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
 		C0DEC0CF2FA3000000000002 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		C0DEC0CF2FA3000000000003 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
+		C0DEFACE2FA6000000000001 /* RituoLiveActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = RituoLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -97,6 +107,13 @@
 				Info.plist,
 			);
 			target = C0DEC0012FA2000000000004 /* RituoSafariContentBlocker */;
+		};
+		C0DEFACE2FA6000000000003 /* Exceptions for "RituoLiveActivity" folder in "RituoLiveActivity" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = C0DEFACE2FA6000000000004 /* RituoLiveActivity */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -133,6 +150,14 @@
 				C0DEC0012FA2000000000003 /* Exceptions for "RituoSafariContentBlocker" folder in "RituoSafariContentBlocker" target */,
 			);
 			path = RituoSafariContentBlocker;
+			sourceTree = "<group>";
+		};
+		C0DEFACE2FA6000000000002 /* RituoLiveActivity */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C0DEFACE2FA6000000000003 /* Exceptions for "RituoLiveActivity" folder in "RituoLiveActivity" target */,
+			);
+			path = RituoLiveActivity;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -176,6 +201,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C0DEFACE2FA6000000000009 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -187,6 +219,7 @@
 				9DC418322F9C35F400782FEC /* ShieldConfigurationExtension */,
 				9DC41A082F9E000000782FEC /* RituoDeviceActivityMonitor */,
 				C0DEC0012FA2000000000002 /* RituoSafariContentBlocker */,
+				C0DEFACE2FA6000000000002 /* RituoLiveActivity */,
 				A1B2C3D42FA1000000000001 /* Shared */,
 				9DC4182D2F9C35F400782FEC /* Frameworks */,
 				9DC417E12F9BE93400782FEC /* Products */,
@@ -200,6 +233,7 @@
 				9DC4182C2F9C35F400782FEC /* ShieldConfigurationExtension.appex */,
 				9DC41A052F9E000000782FEC /* RituoDeviceActivityMonitor.appex */,
 				C0DEC0012FA2000000000001 /* RituoSafariContentBlocker.appex */,
+				C0DEFACE2FA6000000000001 /* RituoLiveActivity.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -244,6 +278,7 @@
 				9DC418382F9C35F400782FEC /* PBXTargetDependency */,
 				9DC41A0D2F9E000000782FEC /* PBXTargetDependency */,
 				C0DEC0012FA200000000000D /* PBXTargetDependency */,
+				C0DEFACE2FA600000000000D /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				9DC417E22F9BE93400782FEC /* HolaSwift */,
@@ -327,6 +362,29 @@
 			productReference = C0DEC0012FA2000000000001 /* RituoSafariContentBlocker.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		C0DEFACE2FA6000000000004 /* RituoLiveActivity */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C0DEFACE2FA6000000000005 /* Build configuration list for PBXNativeTarget "RituoLiveActivity" */;
+			buildPhases = (
+				C0DEFACE2FA6000000000008 /* Sources */,
+				C0DEFACE2FA6000000000009 /* Frameworks */,
+				C0DEFACE2FA600000000000A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A1B2C3D42FA1000000000001 /* Shared */,
+				C0DEFACE2FA6000000000002 /* RituoLiveActivity */,
+			);
+			name = RituoLiveActivity;
+			packageProductDependencies = (
+			);
+			productName = RituoLiveActivity;
+			productReference = C0DEFACE2FA6000000000001 /* RituoLiveActivity.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -373,6 +431,7 @@
 				9DC4182B2F9C35F400782FEC /* ShieldConfigurationExtension */,
 				9DC41A0C2F9E000000782FEC /* RituoDeviceActivityMonitor */,
 				C0DEC0012FA2000000000004 /* RituoSafariContentBlocker */,
+				C0DEFACE2FA6000000000004 /* RituoLiveActivity */,
 			);
 		};
 /* End PBXProject section */
@@ -400,6 +459,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		C0DEC0012FA200000000000A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C0DEFACE2FA600000000000A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -461,6 +527,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C0DEFACE2FA6000000000008 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -478,6 +551,11 @@
 			isa = PBXTargetDependency;
 			target = C0DEC0012FA2000000000004 /* RituoSafariContentBlocker */;
 			targetProxy = C0DEC0012FA200000000000C /* PBXContainerItemProxy */;
+		};
+		C0DEFACE2FA600000000000D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C0DEFACE2FA6000000000004 /* RituoLiveActivity */;
+			targetProxy = C0DEFACE2FA600000000000C /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -611,7 +689,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = HolaSwift/HolaSwift.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 51;
+				CURRENT_PROJECT_VERSION = 59;
 				DEVELOPMENT_TEAM = LXWR3JHQ9L;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -627,7 +705,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.4.2;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -652,7 +730,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = HolaSwift/HolaSwift.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 51;
+				CURRENT_PROJECT_VERSION = 59;
 				DEVELOPMENT_TEAM = LXWR3JHQ9L;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -668,7 +746,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.4.2;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -690,7 +768,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = ShieldConfigurationExtension/ShieldConfigurationExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 51;
+				CURRENT_PROJECT_VERSION = 59;
 				DEVELOPMENT_TEAM = LXWR3JHQ9L;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShieldConfigurationExtension/Info.plist;
@@ -701,7 +779,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.4.2;
 				PRODUCT_BUNDLE_IDENTIFIER = io.rituo.app.ShieldConfigurationExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -719,7 +797,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = ShieldConfigurationExtension/ShieldConfigurationExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 51;
+				CURRENT_PROJECT_VERSION = 59;
 				DEVELOPMENT_TEAM = LXWR3JHQ9L;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShieldConfigurationExtension/Info.plist;
@@ -730,7 +808,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.4.2;
 				PRODUCT_BUNDLE_IDENTIFIER = io.rituo.app.ShieldConfigurationExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -748,7 +826,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = RituoDeviceActivityMonitor/RituoDeviceActivityMonitor.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 51;
+				CURRENT_PROJECT_VERSION = 59;
 				DEVELOPMENT_TEAM = LXWR3JHQ9L;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = RituoDeviceActivityMonitor/Info.plist;
@@ -757,7 +835,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.4.2;
 				PRODUCT_BUNDLE_IDENTIFIER = io.rituo.app.deviceactivitymonitor;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -775,7 +853,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = RituoDeviceActivityMonitor/RituoDeviceActivityMonitor.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 51;
+				CURRENT_PROJECT_VERSION = 59;
 				DEVELOPMENT_TEAM = LXWR3JHQ9L;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = RituoDeviceActivityMonitor/Info.plist;
@@ -784,7 +862,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.4.2;
 				PRODUCT_BUNDLE_IDENTIFIER = io.rituo.app.deviceactivitymonitor;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -803,7 +881,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = RituoSafariContentBlocker/RituoSafariContentBlocker.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 51;
+				CURRENT_PROJECT_VERSION = 59;
 				DEVELOPMENT_TEAM = LXWR3JHQ9L;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = RituoSafariContentBlocker/Info.plist;
@@ -813,7 +891,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.4.2;
 				PRODUCT_BUNDLE_IDENTIFIER = io.rituo.app.SafariContentBlocker;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -832,7 +910,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = RituoSafariContentBlocker/RituoSafariContentBlocker.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 51;
+				CURRENT_PROJECT_VERSION = 59;
 				DEVELOPMENT_TEAM = LXWR3JHQ9L;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = RituoSafariContentBlocker/Info.plist;
@@ -842,8 +920,64 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.4.2;
 				PRODUCT_BUNDLE_IDENTIFIER = io.rituo.app.SafariContentBlocker;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		C0DEFACE2FA6000000000006 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 59;
+				DEVELOPMENT_TEAM = LXWR3JHQ9L;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = RituoLiveActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.4.2;
+				PRODUCT_BUNDLE_IDENTIFIER = io.rituo.app.LiveActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C0DEFACE2FA6000000000007 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 59;
+				DEVELOPMENT_TEAM = LXWR3JHQ9L;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = RituoLiveActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.4.2;
+				PRODUCT_BUNDLE_IDENTIFIER = io.rituo.app.LiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -899,6 +1033,15 @@
 			buildConfigurations = (
 				C0DEC0012FA2000000000006 /* Debug */,
 				C0DEC0012FA2000000000007 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C0DEFACE2FA6000000000005 /* Build configuration list for PBXNativeTarget "RituoLiveActivity" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C0DEFACE2FA6000000000006 /* Debug */,
+				C0DEFACE2FA6000000000007 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -5,6 +5,8 @@ import UIKit
 
 @MainActor
 final class AuthViewModel: ObservableObject {
+    private var legalRequestID = UUID()
+    private let legalCoordinator = AsyncLoadCoordinator()
     private let tokenStore = KeychainTokenStore.shared
     private let networkMonitor = NetworkConnectivityMonitor()
     private let defaults = UserDefaults.standard
@@ -60,20 +62,36 @@ final class AuthViewModel: ObservableObject {
     }
 
     func loadLegalRequirements() async {
+        guard !isRestoringSession else { return }
+        let key = "\(authUser?.id ?? "none"):\(accessToken ?? "none")"
+        await legalCoordinator.run(key: key) { [self] in
+            await performLegalRequirementsLoad()
+        }
+    }
+
+    private func performLegalRequirementsLoad() async {
+        let diagnosticSpan = AppDiagnostics.shared.begin("auth.legal")
+        defer { AppDiagnostics.shared.end("auth.legal", diagnosticSpan) }
+
         guard let accessToken, !accessToken.isEmpty else {
             resetLegalState()
             return
         }
 
+        let requestID = UUID()
+        legalRequestID = requestID
+        let accountID = authUser?.id
         isLoadingLegalRequirements = true
         hasCheckedLegalRequirements = false
         legalRequirementsError = nil
-        defer { isLoadingLegalRequirements = false }
+        defer { if legalRequestID == requestID { isLoadingLegalRequirements = false } }
 
         do {
-            legalRequirements = try await CoreApiService.shared.getLegalRequirements(
+            let requirements = try await CoreApiService.shared.getLegalRequirements(
                 accessToken: accessToken
             )
+            guard legalRequestID == requestID, authUser?.id == accountID, self.accessToken == accessToken else { return }
+            legalRequirements = requirements
             hasCheckedLegalRequirements = true
             if legalRequirements?.requiresAcceptance == false {
                 markLegalRequirementsSatisfied()
@@ -81,6 +99,7 @@ final class AuthViewModel: ObservableObject {
         } catch is CancellationError {
             return
         } catch {
+            guard legalRequestID == requestID, authUser?.id == accountID, self.accessToken == accessToken else { return }
             if (error as? CoreAPIError)?.isCancelled == true {
                 // Superseded by a newer request (e.g. a token refresh retry)
                 // — not a real failure, and not evidence either way about
@@ -311,10 +330,15 @@ final class AuthViewModel: ObservableObject {
     }
 
     func restoreSession() async {
+        let diagnosticSpan = AppDiagnostics.shared.begin("auth.restore")
+        defer { AppDiagnostics.shared.end("auth.restore", diagnosticSpan) }
+
         defer { isRestoringSession = false }
 
+        let cacheSpan = AppDiagnostics.shared.begin("auth.read_cached_session")
         guard let storedAccessToken = tokenStore.loadAccessToken(),
               let storedRefreshToken = tokenStore.loadRefreshToken() else {
+            AppDiagnostics.shared.end("auth.read_cached_session", cacheSpan)
             return
         }
 
@@ -324,12 +348,16 @@ final class AuthViewModel: ObservableObject {
         authUser = tokenStore.loadAuthUser()
         profileDisplayName = tokenStore.loadProfileDisplayName()
         profileImageURL = tokenStore.loadProfileImageURL()
+        AppDiagnostics.shared.end("auth.read_cached_session", cacheSpan)
 
+        let revision = tokenStore.sessionRevision
         do {
             let user = try await AuthAPIClient.shared.getCurrentUser(accessToken: storedAccessToken)
+            guard tokenStore.sessionRevision == revision else { return }
             authUser = user
             isUsingOfflineSession = false
         } catch {
+            guard tokenStore.sessionRevision == revision else { return }
             if isConnectivityProblem(error) {
                 restoreCachedSessionAfterConnectivityFailure(error)
                 return
@@ -339,24 +367,31 @@ final class AuthViewModel: ObservableObject {
     }
 
     private func refreshSessionAndLoadUser(refreshToken: String) async {
+        let revision = tokenStore.sessionRevision
+        guard let previousAccessToken = accessToken else { return }
         do {
-            let tokens = try await AuthAPIClient.shared.refreshTokens(refreshToken: refreshToken)
+            let tokens = try await SessionTokenCoordinator.shared.refresh(accessToken: previousAccessToken)
+            guard tokenStore.sessionRevision == revision else { return }
             accessToken = tokens.accessToken
             self.refreshToken = tokens.refreshToken
-            try? tokenStore.save(accessToken: tokens.accessToken, refreshToken: tokens.refreshToken)
-
             let user = try await AuthAPIClient.shared.getCurrentUser(accessToken: tokens.accessToken)
+            guard tokenStore.sessionRevision == revision else { return }
+            let currentAccess = try SessionTokenCoordinator.shared.accessToken(for: tokens.accessToken)
+            guard let currentRefresh = tokenStore.loadRefreshToken() else { return }
+            accessToken = currentAccess
+            self.refreshToken = currentRefresh
             authUser = user
             isUsingOfflineSession = false
             try? tokenStore.saveSession(
-                accessToken: tokens.accessToken,
-                refreshToken: tokens.refreshToken,
+                accessToken: currentAccess,
+                refreshToken: currentRefresh,
                 user: user,
                 provider: authProvider ?? .email,
                 profileDisplayName: profileDisplayName,
                 profileImageURL: profileImageURL
             )
         } catch {
+            guard tokenStore.sessionRevision == revision, !(error is CancellationError) else { return }
             if isConnectivityProblem(error) {
                 restoreCachedSessionAfterConnectivityFailure(error)
                 return
@@ -421,6 +456,7 @@ final class AuthViewModel: ObservableObject {
     }
 
     private func resetLegalState() {
+        legalRequestID = UUID()
         legalRequirements = nil
         isLoadingLegalRequirements = false
         hasCheckedLegalRequirements = false
@@ -445,11 +481,6 @@ final class AuthViewModel: ObservableObject {
             isUsingOfflineSession = false
             successMessage = "GET /auth/me OK."
 
-            print("Current user id:", user.id)
-            print("Current user email:", user.email ?? "nil")
-            print("Current user displayName:", user.displayName ?? "nil")
-            print("Current user emailVerified:", user.emailVerified)
-            print("Current user status:", user.status)
         } catch {
             handleAuthRequestError(error)
             print("GET /auth/me error:", error)
@@ -492,7 +523,9 @@ final class AuthViewModel: ObservableObject {
         do {
             let result = try await AuthAPIClient.shared.healthCheck()
             successMessage = "Health OK: \(result)"
+            #if DEBUG
             print(result)
+            #endif
         } catch {
             errorMessage = error.localizedDescription
             print("Health check error:", error)

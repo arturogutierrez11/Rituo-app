@@ -351,3 +351,105 @@ struct DemoAppIcon: View {
         }
     }
 }
+
+
+/// Frosted glass in a capsule, matching the floating tab bar:
+/// blur + tint + light from the top edge + a specular rim.
+struct RituoGlassCapsule: View {
+    enum Tint {
+        /// Rituo-blue glass, for use over light text.
+        case blue
+        /// Milky white glass, for use under dark text.
+        case white
+    }
+
+    var tint: Tint = .blue
+
+    var body: some View {
+        ZStack {
+            Capsule(style: .continuous)
+                .fill(.ultraThinMaterial)
+                .environment(\.colorScheme, tint == .white ? .light : .dark)
+
+            Capsule(style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: tintColors,
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+
+            Capsule(style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            RituoPalette.white.opacity(tint == .white ? 0.55 : 0.26),
+                            RituoPalette.white.opacity(0.04),
+                            .clear
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+
+            Capsule(style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: rimColors,
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 1
+                )
+        }
+        .shadow(color: shadowColor, radius: 22, x: 0, y: 10)
+        .shadow(color: glowColor, radius: 18, x: 0, y: 0)
+        .allowsHitTesting(false)
+    }
+
+    private var tintColors: [Color] {
+        switch tint {
+        case .blue:
+            return [
+                RituoPalette.lightBlue.opacity(0.42),
+                RituoPalette.darkCanteen.opacity(0.52),
+                RituoPalette.deepOceanBlue.opacity(0.50)
+            ]
+        case .white:
+            return [
+                RituoPalette.white.opacity(0.88),
+                RituoPalette.white.opacity(0.74)
+            ]
+        }
+    }
+
+    private var rimColors: [Color] {
+        switch tint {
+        case .blue:
+            return [
+                RituoPalette.mistBlue.opacity(0.65),
+                RituoPalette.lightBlue.opacity(0.14),
+                RituoPalette.lightBlue.opacity(0.30)
+            ]
+        case .white:
+            return [
+                RituoPalette.white.opacity(0.95),
+                RituoPalette.white.opacity(0.35),
+                RituoPalette.white.opacity(0.60)
+            ]
+        }
+    }
+
+    private var shadowColor: Color {
+        tint == .white
+            ? Color.black.opacity(0.18)
+            : RituoPalette.deepOceanBlue.opacity(0.55)
+    }
+
+    private var glowColor: Color {
+        tint == .white
+            ? RituoPalette.white.opacity(0.28)
+            : RituoPalette.lightBlue.opacity(0.18)
+    }
+}

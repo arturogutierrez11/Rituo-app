@@ -27,6 +27,11 @@ final class SyncOutboxStore {
         context = container.map(ModelContext.init)
     }
 
+    init(container: ModelContainer) {
+        self.container = container
+        self.context = ModelContext(container)
+    }
+
     func upsert(
         id: UUID,
         userID: String,
@@ -184,9 +189,9 @@ final class SyncOutboxStore {
         try? context.save()
     }
 
-    func markFailure(id: UUID, error: Error) {
+    func markFailure(id: UUID, error: Error, retryable: Bool = true) {
         guard let operation = operation(id: id) else { return }
-        applyFailure(to: operation, error: error)
+        applyFailure(to: operation, error: error, retryable: retryable)
     }
 
     func remove(id: UUID) {
@@ -194,6 +199,15 @@ final class SyncOutboxStore {
         guard let operation = operation(id: id) else { return }
         context.delete(operation)
         try? context.save()
+    }
+
+    func contains(id: UUID) -> Bool {
+        operation(id: id) != nil
+    }
+
+    // The idempotency key identifies a payload revision, not just the scoped row.
+    func isCurrent(id: UUID, revision: String) -> Bool {
+        operation(id: id)?.idempotencyKey == revision
     }
 
     func updatePayload(id: UUID, payload: Data) throws {
@@ -256,14 +270,15 @@ final class SyncOutboxStore {
 
     private func applyFailure(
         to operation: PendingSyncOperation,
-        error: Error
+        error: Error,
+        retryable: Bool = true
     ) {
         guard let context else { return }
 
         operation.attempts += 1
         operation.lastError = error.localizedDescription
 
-        if operation.attempts >= Self.maximumAutomaticAttempts {
+        if !retryable || operation.attempts >= Self.maximumAutomaticAttempts {
             operation.statusRawValue = SyncOperationStatus.failed.rawValue
         } else {
             operation.statusRawValue = SyncOperationStatus.pending.rawValue
@@ -289,6 +304,9 @@ final class SyncOutboxStore {
     }
 
     private static func makeContainer() -> ModelContainer? {
+        let diagnosticSpan = AppDiagnostics.shared.begin("outbox.open")
+        defer { AppDiagnostics.shared.end("outbox.open", diagnosticSpan) }
+
         let configuration = ModelConfiguration(for: PendingSyncOperation.self)
 
         do {

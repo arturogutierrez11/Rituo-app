@@ -87,7 +87,7 @@ final class AuthAPIClient {
         let response: URLResponse
 
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await DiagnosticHTTP.data(for: request)
         } catch {
             throw mapNetworkError(error)
         }
@@ -100,7 +100,7 @@ final class AuthAPIClient {
             throw serverError(statusCode: httpResponse.statusCode, data: data)
         }
 
-        return try JSONDecoder().decode(AppleAuthResponse.self, from: data)
+        return try DiagnosticHTTP.decode(AppleAuthResponse.self, from: data)
     }
 
     func signInWithGoogle(
@@ -129,7 +129,7 @@ final class AuthAPIClient {
         let response: URLResponse
 
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await DiagnosticHTTP.data(for: request)
         } catch {
             throw mapNetworkError(error)
         }
@@ -138,13 +138,15 @@ final class AuthAPIClient {
             throw AuthAPIError.invalidResponse
         }
 
+        #if DEBUG
         print("POST /auth/google status:", httpResponse.statusCode)
+        #endif
 
         guard 200 ..< 300 ~= httpResponse.statusCode else {
             throw serverError(statusCode: httpResponse.statusCode, data: data)
         }
 
-        return try JSONDecoder().decode(GoogleAuthResponse.self, from: data)
+        return try DiagnosticHTTP.decode(GoogleAuthResponse.self, from: data)
     }
 
     func registerWithEmail(
@@ -180,7 +182,7 @@ final class AuthAPIClient {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(EmailRegisterResponse.self, from: data)
+        return try DiagnosticHTTP.decode(EmailRegisterResponse.self, from: data)
     }
 
     func signInWithEmail(
@@ -208,7 +210,7 @@ final class AuthAPIClient {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(EmailAuthResponse.self, from: data)
+        return try DiagnosticHTTP.decode(EmailAuthResponse.self, from: data)
     }
 
     func forgotPassword(email: String) async throws {
@@ -259,7 +261,7 @@ final class AuthAPIClient {
         let response: URLResponse
 
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await DiagnosticHTTP.data(for: request)
         } catch {
             throw mapNetworkError(error)
         }
@@ -268,13 +270,15 @@ final class AuthAPIClient {
             throw AuthAPIError.invalidResponse
         }
 
+        #if DEBUG
         print("GET /auth/me status:", httpResponse.statusCode)
+        #endif
 
         guard 200 ..< 300 ~= httpResponse.statusCode else {
             throw serverError(statusCode: httpResponse.statusCode, data: data)
         }
 
-        return try JSONDecoder().decode(AuthUser.self, from: data)
+        return try DiagnosticHTTP.decode(AuthUser.self, from: data)
     }
 
 
@@ -293,7 +297,7 @@ final class AuthAPIClient {
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, _) = try await send(request)
-        return try JSONDecoder().decode(TokenResponse.self, from: data)
+        return try DiagnosticHTTP.decode(TokenResponse.self, from: data)
     }
 
     func logout(refreshToken: String) async throws {
@@ -342,7 +346,7 @@ final class AuthAPIClient {
         let response: URLResponse
 
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await DiagnosticHTTP.data(for: request)
         } catch {
             throw mapNetworkError(error)
         }
@@ -359,7 +363,7 @@ final class AuthAPIClient {
         let response: URLResponse
 
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await DiagnosticHTTP.data(for: request)
         } catch {
             throw mapNetworkError(error)
         }

@@ -66,7 +66,16 @@ struct SharedRitualSuppressionStore {
             defaults?.set(name, forKey: Self.heartbeatActivityNameKey)
         } else {
             defaults?.removeObject(forKey: Self.heartbeatActivityNameKey)
+            defaults?.removeObject(forKey: "rituo.sharedHeartbeatExpiration")
         }
+    }
+
+    func heartbeatExpiration() -> Date? {
+        defaults?.object(forKey: "rituo.sharedHeartbeatExpiration") as? Date
+    }
+
+    func setHeartbeatExpiration(_ date: Date) {
+        defaults?.set(date, forKey: "rituo.sharedHeartbeatExpiration")
     }
 
     func heartbeatActivityName() -> String? {

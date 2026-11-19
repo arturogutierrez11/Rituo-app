@@ -71,11 +71,15 @@ final class BlockSetupViewModel: ObservableObject {
     private struct PendingModeBreakConfig: Codable {
         let localModeID: String
         let coreModeID: String
+        // Optional to decode operations saved by older builds.
+        let request: SaveBreakConfigRequest?
     }
 
     private struct PendingRitualBreakConfig: Codable {
         let localSchedulerID: UUID
         let coreRitualID: String
+        // Optional to decode operations saved by older builds.
+        let request: SaveBreakConfigRequest?
     }
 
     private enum BlockSource {
@@ -208,6 +212,10 @@ final class BlockSetupViewModel: ObservableObject {
     private let ritualBreakUntilKey = "rituo.ritualBreakUntil"
     private let ritualBreakUsedSchedulerIDKey = "rituo.ritualBreakUsedSchedulerID"
     private let ritualBreakUsedCountKey = "rituo.ritualBreakUsedCount"
+    private let ritualBreakUsedAtKey = "rituo.ritualBreakUsedAt"
+    private let loadCoordinator = AsyncLoadCoordinator()
+    private let configurationCoordinator = AsyncLoadCoordinator()
+    private let breakCoordinator = AsyncLoadCoordinator()
     private var activeAccessToken: String?
     private var reviewDemoTagCompletion: ((Result<NFCTagScanResult, Error>) -> Void)?
     private static let earlyMonitorEndGraceSeconds: TimeInterval = 60
@@ -219,6 +227,9 @@ final class BlockSetupViewModel: ObservableObject {
         syncOutbox: SyncOutboxStore? = nil,
         defaults: UserDefaults = .standard
     ) {
+
+        let diagnosticSpan = AppDiagnostics.shared.begin("block.init")
+        defer { AppDiagnostics.shared.end("block.init", diagnosticSpan) }
         self.schedulerStore = schedulerStore ?? SchedulerStore(defaults: defaults)
         self.modeStore = modeStore ?? ModeStore(defaults: defaults)
         self.coreApi = coreApi ?? .shared
@@ -258,8 +269,7 @@ final class BlockSetupViewModel: ObservableObject {
             defaults.removeObject(forKey: ritualBreakUntilKey)
         }
         self.sharedSuppressionStore.replaceSuppressions(self.suppressedScheduledBlocks)
-        rescheduleDeviceActivities()
-        restorePersistedScheduledSuppressions()
+        // Preserve existing monitors until the account's saved rituals are restored.
         startScheduleStateTimer()
         refreshDeviceActivityDebugEvents()
         connectivityMonitor.start { [weak self] in
@@ -292,6 +302,9 @@ final class BlockSetupViewModel: ObservableObject {
     }
 
     func updateAuthenticatedUserID(_ userID: String?) {
+        let diagnosticSpan = AppDiagnostics.shared.begin("block.restore_account")
+        defer { AppDiagnostics.shared.end("block.restore_account", diagnosticSpan) }
+
         guard activeAccountID != userID else { return }
 
         let previousAccountID = activeAccountID
@@ -331,6 +344,7 @@ final class BlockSetupViewModel: ObservableObject {
         modes = modeStore.load(accountID: userID)
         applyRitualDeletionTombstones(userID: userID)
         rescheduleDeviceActivities()
+        restorePersistedScheduledSuppressions()
         importDeviceActivityEvents(userID: userID)
         restorePendingSyncOperations(userID: userID)
         restoreActiveModeIfNeeded(accountID: userID)
@@ -684,6 +698,9 @@ final class BlockSetupViewModel: ObservableObject {
             type: .createRitualConfiguration,
             scope: scheduler.id.uuidString
         )
+        // A POST may already have reached the server even after a timeout.
+        // Keep its body/key stable; subsequent edits are PATCHed after linking its ID.
+        guard !syncOutbox.contains(id: operationID) else { return }
         let payload = PendingRitualConfiguration(
             localSchedulerID: scheduler.id,
             coreRitualID: scheduler.coreRitualId,
@@ -815,30 +832,44 @@ final class BlockSetupViewModel: ObservableObject {
     private func syncPendingConfigurationOperations(accessToken: String) async {
         guard let userID = activeAccountID, !accessToken.isEmpty else { return }
 
+        await configurationCoordinator.run(key: userID) { [self] in
+            guard activeAccountID == userID else { return }
+            await drainConfigurationOperations(userID: userID, accessToken: accessToken)
+        }
+    }
+
+    private func drainConfigurationOperations(userID: String, accessToken: String) async {
+        guard activeAccountID == userID else { return }
         await syncPendingModeConfigurations(
             userID: userID,
             accessToken: accessToken
         )
+        guard activeAccountID == userID else { return }
         await syncPendingRitualConfigurations(
             userID: userID,
             accessToken: accessToken
         )
+        guard activeAccountID == userID else { return }
         await syncPendingRitualUpdates(
             userID: userID,
             accessToken: accessToken
         )
+        guard activeAccountID == userID else { return }
         await syncPendingRitualDeletions(
             userID: userID,
             accessToken: accessToken
         )
+        guard activeAccountID == userID else { return }
         await syncPendingModeBreakConfigs(
             userID: userID,
             accessToken: accessToken
         )
+        guard activeAccountID == userID else { return }
         await syncPendingRitualBreakConfigs(
             userID: userID,
             accessToken: accessToken
         )
+        guard activeAccountID == userID else { return }
         scheduleConfigurationOutboxRetry(
             userID: userID,
             accessToken: accessToken
@@ -864,7 +895,10 @@ final class BlockSetupViewModel: ObservableObject {
                 continue
             }
 
-            syncOutbox.markSyncing(id: operation.id)
+            let revision = operation.idempotencyKey
+            let operationID = operation.id
+            syncOutbox.markSyncing(id: operationID)
+            let password = keychainStore.loadSyncSecret(operationID: operationID)
             do {
                 let coreModeID: String
                 if let storedID = pending.coreModeID
@@ -872,6 +906,7 @@ final class BlockSetupViewModel: ObservableObject {
                     coreModeID = storedID
                 } else {
                     let coreModes = try await coreApi.listModes(accessToken: accessToken)
+                    guard activeAccountID == userID, syncOutbox.isCurrent(id: operationID, revision: revision) else { continue }
                     mergeCoreModes(coreModes)
                     guard let resolvedID = modes.first(
                         where: { $0.id == pending.localModeID }
@@ -881,22 +916,20 @@ final class BlockSetupViewModel: ObservableObject {
                     coreModeID = resolvedID
                 }
 
-                let password = keychainStore.loadSyncSecret(
-                    operationID: operation.id
-                )
                 let response = try await coreApi.updateMode(
                     accessToken: accessToken,
                     modeId: coreModeID,
                     body: pending.updateRequest.withPassword(password),
-                    idempotencyKey: "\(operation.idempotencyKey):config"
+                    idempotencyKey: "\(revision):config"
                 )
                 _ = try await coreApi.replaceModeBlockedItems(
                     accessToken: accessToken,
                     modeId: coreModeID,
                     body: pending.blockedItemsRequest,
-                    idempotencyKey: "\(operation.idempotencyKey):items"
+                    idempotencyKey: "\(revision):items"
                 )
 
+                guard activeAccountID == userID, syncOutbox.isCurrent(id: operationID, revision: revision) else { continue }
                 if let index = modes.firstIndex(
                     where: { $0.id == pending.localModeID }
                 ) {
@@ -918,9 +951,13 @@ final class BlockSetupViewModel: ObservableObject {
                     modeStore.save(modes, accountID: userID)
                     await syncModeBreakConfig(coreModeID: coreModeID, localModeID: pending.localModeID, accessToken: accessToken)
                 }
+                guard activeAccountID == userID, syncOutbox.isCurrent(id: operationID, revision: revision) else { continue }
                 pendingModePasswords.removeValue(forKey: pending.localModeID)
-                clearConfigurationOperation(operation)
+                if syncOutbox.isCurrent(id: operationID, revision: revision) {
+                    clearConfigurationOperation(operation)
+                }
             } catch {
+                guard activeAccountID == userID, syncOutbox.isCurrent(id: operationID, revision: revision) else { continue }
                 syncOutbox.markFailure(id: operation.id, error: error)
                 modeMessage = "El modo quedó pendiente de sincronización."
             }
@@ -931,74 +968,63 @@ final class BlockSetupViewModel: ObservableObject {
         userID: String,
         accessToken: String
     ) async {
-        let operations = syncOutbox.operations(
-            userID: userID,
-            type: .createRitualConfiguration
-        )
-
+        let operations = syncOutbox.operations(userID: userID, type: .createRitualConfiguration)
         for operation in operations where syncOutbox.isDue(id: operation.id) {
-            guard var pending = try? JSONDecoder().decode(
-                PendingRitualConfiguration.self,
-                from: operation.payload
-            ) else {
+            guard activeAccountID == userID, activeAccessToken == accessToken else { return }
+            guard var pending = try? JSONDecoder().decode(PendingRitualConfiguration.self, from: operation.payload) else {
                 clearConfigurationOperation(operation)
                 continue
             }
-
-            syncOutbox.markSyncing(id: operation.id)
+            let operationID = operation.id
+            let revision = operation.idempotencyKey
+            let password = keychainStore.loadSyncSecret(operationID: operationID)
+            syncOutbox.markSyncing(id: operationID)
+            func isCurrent() -> Bool {
+                activeAccountID == userID && activeAccessToken == accessToken &&
+                    syncOutbox.isCurrent(id: operationID, revision: revision)
+            }
             do {
                 let response: RitualResponse
-                if let coreRitualID = pending.coreRitualID {
-                    response = try await coreApi.getRitual(
-                        accessToken: accessToken,
-                        ritualId: coreRitualID
-                    )
+                if let coreID = pending.coreRitualID {
+                    response = try await coreApi.getRitual(accessToken: accessToken, ritualId: coreID)
                 } else {
-                    let password = keychainStore.loadSyncSecret(
-                        operationID: operation.id
-                    )
                     response = try await coreApi.createRitual(
-                        accessToken: accessToken,
-                        body: pending.createRequest.withPassword(password),
-                        idempotencyKey: "\(operation.idempotencyKey):config"
-                    )
-                    pending = PendingRitualConfiguration(
-                        localSchedulerID: pending.localSchedulerID,
-                        coreRitualID: response.id,
-                        createRequest: pending.createRequest,
-                        blockedItemsRequest: pending.blockedItemsRequest
-                    )
-                    try syncOutbox.updatePayload(
-                        id: operation.id,
-                        payload: JSONEncoder().encode(pending)
-                    )
-                    applyCoreRitualResponse(
-                        response,
-                        localSchedulerID: pending.localSchedulerID
+                        accessToken: accessToken, body: pending.createRequest.withPassword(password),
+                        idempotencyKey: "\(revision):config"
                     )
                 }
+                guard isCurrent() else { continue }
+                // Checkpoint before any further await: retrying cannot POST a second ritual.
+                pending = PendingRitualConfiguration(localSchedulerID: pending.localSchedulerID,
+                    coreRitualID: response.id, createRequest: pending.createRequest,
+                    blockedItemsRequest: pending.blockedItemsRequest)
+                try syncOutbox.updatePayload(id: operationID, payload: JSONEncoder().encode(pending))
 
-                _ = try await coreApi.replaceRitualBlockedItems(
-                    accessToken: accessToken,
-                    ritualId: response.id,
-                    body: pending.blockedItemsRequest,
-                    idempotencyKey: "\(operation.idempotencyKey):items"
-                )
-                applyCoreRitualResponse(
-                    response,
-                    localSchedulerID: pending.localSchedulerID
-                )
-                await syncRitualBreakConfig(
-                    coreRitualID: response.id,
-                    localSchedulerID: pending.localSchedulerID,
-                    accessToken: accessToken
-                )
-                pendingRitualPasswords.removeValue(
-                    forKey: pending.localSchedulerID
-                )
+                _ = try await coreApi.replaceRitualBlockedItems(accessToken: accessToken,
+                    ritualId: response.id, body: pending.blockedItemsRequest,
+                    idempotencyKey: "\(revision):items")
+                guard isCurrent() else { continue }
+
+                if let latest = schedulers.first(where: { $0.id == pending.localSchedulerID }) {
+                    let encoder = JSONEncoder()
+                    encoder.outputFormatting = [.sortedKeys]
+                    let changed = try encoder.encode(latest.createRitualRequest()) != encoder.encode(pending.createRequest)
+                        || encoder.encode(latest.blockedItemsRequest) != encoder.encode(pending.blockedItemsRequest)
+                    if changed {
+                        // Save the follow-up before deleting the create operation (crash recovery).
+                        try queueRitualUpdate(latest, coreRitualID: response.id,
+                            password: pendingRitualPasswords[latest.id] ?? password)
+                    }
+                    applyCoreRitualResponse(response, localSchedulerID: latest.id, preserveLocalProtection: changed)
+                    await syncRitualBreakConfig(coreRitualID: response.id,
+                        localSchedulerID: latest.id, accessToken: accessToken)
+                    guard isCurrent() else { continue }
+                }
+                pendingRitualPasswords.removeValue(forKey: pending.localSchedulerID)
                 clearConfigurationOperation(operation)
             } catch {
-                syncOutbox.markFailure(id: operation.id, error: error)
+                guard isCurrent() else { continue }
+                syncOutbox.markFailure(id: operationID, error: error)
                 coreSyncMessage = "El ritual quedó pendiente de sincronización."
             }
         }
@@ -1022,21 +1048,24 @@ final class BlockSetupViewModel: ObservableObject {
                 continue
             }
 
-            syncOutbox.markSyncing(id: operation.id)
+            let revision = operation.idempotencyKey
+            let operationID = operation.id
+            syncOutbox.markSyncing(id: operationID)
             do {
                 let password = keychainStore.loadSyncSecret(operationID: operation.id)
                 let response = try await coreApi.updateRitual(
                     accessToken: accessToken,
                     ritualId: pending.coreRitualID,
                     body: pending.updateRequest.withPassword(password),
-                    idempotencyKey: "\(operation.idempotencyKey):config"
+                    idempotencyKey: "\(revision):config"
                 )
                 _ = try await coreApi.replaceRitualBlockedItems(
                     accessToken: accessToken,
                     ritualId: pending.coreRitualID,
                     body: pending.blockedItemsRequest,
-                    idempotencyKey: "\(operation.idempotencyKey):items"
+                    idempotencyKey: "\(revision):items"
                 )
+                guard activeAccountID == userID, syncOutbox.isCurrent(id: operationID, revision: revision) else { continue }
                 applyCoreRitualResponse(
                     response,
                     localSchedulerID: pending.localSchedulerID
@@ -1046,11 +1075,15 @@ final class BlockSetupViewModel: ObservableObject {
                     localSchedulerID: pending.localSchedulerID,
                     accessToken: accessToken
                 )
+                guard activeAccountID == userID, syncOutbox.isCurrent(id: operationID, revision: revision) else { continue }
                 pendingRitualPasswords.removeValue(
                     forKey: pending.localSchedulerID
                 )
-                clearConfigurationOperation(operation)
+                if syncOutbox.isCurrent(id: operationID, revision: revision) {
+                    clearConfigurationOperation(operation)
+                }
             } catch {
+                guard activeAccountID == userID, syncOutbox.isCurrent(id: operationID, revision: revision) else { continue }
                 if Self.isRitualNotFoundError(error) {
                     // Ritual was deleted elsewhere (another device, or already
                     // removed) — retrying this update forever would be pointless.
@@ -1091,17 +1124,24 @@ final class BlockSetupViewModel: ObservableObject {
     /// device) and merges it into the local schedulers. Best-effort per ritual — one
     /// failing fetch doesn't block the others.
     private func loadRitualBreakConfigs(accessToken: String) async {
+        guard let userID = activeAccountID, activeAccessToken == accessToken else { return }
         let targets = schedulers.compactMap { scheduler -> (UUID, String)? in
             guard let coreRitualId = scheduler.coreRitualId else { return nil }
             return (scheduler.id, coreRitualId)
         }
 
         for (localID, coreID) in targets {
+            guard activeAccountID == userID, activeAccessToken == accessToken else { return }
+            let operationID = Self.scopedSyncOperationID(userID: userID,
+                type: .syncRitualBreakConfig, scope: localID.uuidString)
+            guard !syncOutbox.contains(id: operationID) else { continue }
             guard let config = try? await coreApi.getRitualBreakConfig(
                 accessToken: accessToken,
                 ritualId: coreID
             ) else { continue }
 
+            guard activeAccountID == userID, activeAccessToken == accessToken else { return }
+            guard !syncOutbox.contains(id: operationID) else { continue }
             guard let index = schedulers.firstIndex(where: { $0.id == localID }) else { continue }
             schedulers[index] = schedulers[index].withBreakConfig(
                 breakCount: config.breakCount,
@@ -1113,17 +1153,24 @@ final class BlockSetupViewModel: ObservableObject {
 
     /// Same as `loadRitualBreakConfigs`, for modes.
     private func loadModeBreakConfigs(accessToken: String) async {
+        guard let userID = activeAccountID, activeAccessToken == accessToken else { return }
         let targets = modes.compactMap { mode -> (String, String)? in
             guard let coreModeId = mode.coreModeId else { return nil }
             return (mode.id, coreModeId)
         }
 
         for (localID, coreID) in targets {
+            guard activeAccountID == userID, activeAccessToken == accessToken else { return }
+            let operationID = Self.scopedSyncOperationID(userID: userID,
+                type: .syncModeBreakConfig, scope: localID)
+            guard !syncOutbox.contains(id: operationID) else { continue }
             guard let config = try? await coreApi.getModeBreakConfig(
                 accessToken: accessToken,
                 modeId: coreID
             ) else { continue }
 
+            guard activeAccountID == userID, activeAccessToken == accessToken else { return }
+            guard !syncOutbox.contains(id: operationID) else { continue }
             guard let index = modes.firstIndex(where: { $0.id == localID }) else { continue }
             modes[index].breakCount = config.breakCount
             modes[index].breakDurationMinutes = config.breakDurationMinutes
@@ -1133,144 +1180,152 @@ final class BlockSetupViewModel: ObservableObject {
         }
     }
 
-    /// Break config lives on its own endpoint (`/rituals/:id/breaks`), separate from
-    /// the ritual's own create/update — this best-effort-syncs it right after the
-    /// ritual itself synced, without failing the whole ritual sync if it errors.
-    /// On failure it queues a retry instead of just logging — otherwise a single
-    /// transient failure leaves the backend permanently out of sync with what the
-    /// user configured, and the next `loadRitualBreakConfigs` GET silently
-    /// overwrites the correct local value with the stale server one.
+    // Persist the exact revision before sending; retries must not replace it.
     private func syncRitualBreakConfig(
         coreRitualID: String,
         localSchedulerID: UUID,
         accessToken: String
     ) async {
-        guard let scheduler = schedulers.first(where: { $0.id == localSchedulerID }) else { return }
-        do {
-            _ = try await coreApi.saveRitualBreakConfig(
-                accessToken: accessToken,
-                ritualId: coreRitualID,
-                body: scheduler.breakConfigRequest()
-            )
-            removeQueuedRitualBreakConfig(localSchedulerID)
-        } catch {
-            deviceActivityDebugStore.log(
-                "No se pudieron sincronizar los recreos de \(scheduler.title): \(error.localizedDescription)"
-            )
-            queueRitualBreakConfig(localSchedulerID: localSchedulerID, coreRitualID: coreRitualID)
-        }
-    }
-
-    private func syncModeBreakConfig(
-        coreModeID: String,
-        localModeID: String,
-        accessToken: String
-    ) async {
-        guard let mode = modes.first(where: { $0.id == localModeID }) else { return }
-        do {
-            _ = try await coreApi.saveModeBreakConfig(
-                accessToken: accessToken,
-                modeId: coreModeID,
-                body: mode.breakConfigRequest()
-            )
-            removeQueuedModeBreakConfig(localModeID)
-        } catch {
-            deviceActivityDebugStore.log(
-                "No se pudieron sincronizar los recreos de \(mode.title): \(error.localizedDescription)"
-            )
-            queueModeBreakConfig(localModeID: localModeID, coreModeID: coreModeID)
-        }
-    }
-
-    private func queueRitualBreakConfig(localSchedulerID: UUID, coreRitualID: String) {
-        guard let userID = activeAccountID else { return }
+        guard let userID = activeAccountID, activeAccessToken == accessToken,
+              let scheduler = schedulers.first(where: { $0.id == localSchedulerID }) else { return }
         let operationID = Self.scopedSyncOperationID(
-            userID: userID,
-            type: .syncRitualBreakConfig,
-            scope: localSchedulerID.uuidString
+            userID: userID, type: .syncRitualBreakConfig, scope: localSchedulerID.uuidString
         )
-        let payload = PendingRitualBreakConfig(localSchedulerID: localSchedulerID, coreRitualID: coreRitualID)
-        guard let data = try? JSONEncoder().encode(payload) else { return }
-        try? syncOutbox.upsertScoped(id: operationID, userID: userID, type: .syncRitualBreakConfig, payload: data)
-        refreshSyncOutboxStatus()
+        let pending = PendingRitualBreakConfig(
+            localSchedulerID: localSchedulerID, coreRitualID: coreRitualID, request: scheduler.breakConfigRequest()
+        )
+        do {
+            try syncOutbox.upsertScoped(id: operationID, userID: userID,
+                type: .syncRitualBreakConfig, payload: JSONEncoder().encode(pending))
+        } catch {
+            coreSyncMessage = error.localizedDescription
+            return
+        }
+        await syncPendingRitualBreakConfigs(userID: userID, accessToken: accessToken)
+        guard activeAccountID == userID, activeAccessToken == accessToken else { return }
+        scheduleConfigurationOutboxRetry(userID: userID, accessToken: accessToken)
     }
 
     private func removeQueuedRitualBreakConfig(_ localSchedulerID: UUID) {
         guard let userID = activeAccountID else { return }
         let operationID = Self.scopedSyncOperationID(
-            userID: userID,
-            type: .syncRitualBreakConfig,
-            scope: localSchedulerID.uuidString
+            userID: userID, type: .syncRitualBreakConfig, scope: localSchedulerID.uuidString
         )
         syncOutbox.remove(id: operationID)
         refreshSyncOutboxStatus()
     }
 
-    private func queueModeBreakConfig(localModeID: String, coreModeID: String) {
-        guard let userID = activeAccountID else { return }
-        let operationID = Self.scopedSyncOperationID(
-            userID: userID,
-            type: .syncModeBreakConfig,
-            scope: localModeID
-        )
-        let payload = PendingModeBreakConfig(localModeID: localModeID, coreModeID: coreModeID)
-        guard let data = try? JSONEncoder().encode(payload) else { return }
-        try? syncOutbox.upsertScoped(id: operationID, userID: userID, type: .syncModeBreakConfig, payload: data)
+    private func syncPendingRitualBreakConfigs(userID: String, accessToken: String) async {
+        await breakCoordinator.run(key: "Ritual:\(userID)") { [self] in
+            await drainRitualBreakConfigs(userID: userID, accessToken: accessToken)
+        }
+    }
+
+    private func drainRitualBreakConfigs(userID: String, accessToken: String) async {
+        let operations = syncOutbox.operations(userID: userID, type: .syncRitualBreakConfig)
+        for operation in operations where syncOutbox.isDue(id: operation.id) {
+            guard activeAccountID == userID, activeAccessToken == accessToken else { return }
+            guard let pending = try? JSONDecoder().decode(PendingRitualBreakConfig.self, from: operation.payload),
+                  let scheduler = schedulers.first(where: { $0.id == pending.localSchedulerID }) else {
+                syncOutbox.remove(id: operation.id)
+                continue
+            }
+            let operationID = operation.id
+            let revision = operation.idempotencyKey
+            let request = pending.request ?? scheduler.breakConfigRequest()
+            syncOutbox.markSyncing(id: operationID)
+            do {
+                _ = try await coreApi.saveRitualBreakConfig(
+                    accessToken: accessToken, ritualId: pending.coreRitualID, body: request
+                )
+                guard activeAccountID == userID, activeAccessToken == accessToken,
+                      syncOutbox.isCurrent(id: operationID, revision: revision) else { continue }
+                syncOutbox.remove(id: operationID)
+            } catch {
+                guard activeAccountID == userID, activeAccessToken == accessToken,
+                      syncOutbox.isCurrent(id: operationID, revision: revision) else { continue }
+                syncOutbox.markFailure(id: operationID, error: error,
+                    retryable: !Self.isPermanentBreakConfigError(error))
+            }
+        }
         refreshSyncOutboxStatus()
+    }
+
+    // Persist the exact revision before sending; retries must not replace it.
+    private func syncModeBreakConfig(
+        coreModeID: String,
+        localModeID: String,
+        accessToken: String
+    ) async {
+        guard let userID = activeAccountID, activeAccessToken == accessToken,
+              let mode = modes.first(where: { $0.id == localModeID }) else { return }
+        let operationID = Self.scopedSyncOperationID(
+            userID: userID, type: .syncModeBreakConfig, scope: localModeID
+        )
+        let pending = PendingModeBreakConfig(
+            localModeID: localModeID, coreModeID: coreModeID, request: mode.breakConfigRequest()
+        )
+        do {
+            try syncOutbox.upsertScoped(id: operationID, userID: userID,
+                type: .syncModeBreakConfig, payload: JSONEncoder().encode(pending))
+        } catch {
+            coreSyncMessage = error.localizedDescription
+            return
+        }
+        await syncPendingModeBreakConfigs(userID: userID, accessToken: accessToken)
+        guard activeAccountID == userID, activeAccessToken == accessToken else { return }
+        scheduleConfigurationOutboxRetry(userID: userID, accessToken: accessToken)
     }
 
     private func removeQueuedModeBreakConfig(_ localModeID: String) {
         guard let userID = activeAccountID else { return }
         let operationID = Self.scopedSyncOperationID(
-            userID: userID,
-            type: .syncModeBreakConfig,
-            scope: localModeID
+            userID: userID, type: .syncModeBreakConfig, scope: localModeID
         )
         syncOutbox.remove(id: operationID)
         refreshSyncOutboxStatus()
     }
 
-    /// Retries any break-config POSTs that failed earlier — re-reads the
-    /// *current* breakCount/breakDurationMinutes rather than trusting a
-    /// stale snapshot, so a later edit is what actually gets synced.
-    private func syncPendingRitualBreakConfigs(userID: String, accessToken: String) async {
-        let operations = syncOutbox.operations(userID: userID, type: .syncRitualBreakConfig)
-        for operation in operations where syncOutbox.isDue(id: operation.id) {
-            guard let pending = try? JSONDecoder().decode(PendingRitualBreakConfig.self, from: operation.payload) else {
-                syncOutbox.remove(id: operation.id)
-                continue
-            }
-            guard schedulers.contains(where: { $0.id == pending.localSchedulerID }) else {
-                syncOutbox.remove(id: operation.id)
-                continue
-            }
-            syncOutbox.markSyncing(id: operation.id)
-            await syncRitualBreakConfig(
-                coreRitualID: pending.coreRitualID,
-                localSchedulerID: pending.localSchedulerID,
-                accessToken: accessToken
-            )
+    private func syncPendingModeBreakConfigs(userID: String, accessToken: String) async {
+        await breakCoordinator.run(key: "Mode:\(userID)") { [self] in
+            await drainModeBreakConfigs(userID: userID, accessToken: accessToken)
         }
     }
 
-    private func syncPendingModeBreakConfigs(userID: String, accessToken: String) async {
+    private func drainModeBreakConfigs(userID: String, accessToken: String) async {
         let operations = syncOutbox.operations(userID: userID, type: .syncModeBreakConfig)
         for operation in operations where syncOutbox.isDue(id: operation.id) {
-            guard let pending = try? JSONDecoder().decode(PendingModeBreakConfig.self, from: operation.payload) else {
+            guard activeAccountID == userID, activeAccessToken == accessToken else { return }
+            guard let pending = try? JSONDecoder().decode(PendingModeBreakConfig.self, from: operation.payload),
+                  let mode = modes.first(where: { $0.id == pending.localModeID }) else {
                 syncOutbox.remove(id: operation.id)
                 continue
             }
-            guard modes.contains(where: { $0.id == pending.localModeID }) else {
-                syncOutbox.remove(id: operation.id)
-                continue
+            let operationID = operation.id
+            let revision = operation.idempotencyKey
+            let request = pending.request ?? mode.breakConfigRequest()
+            syncOutbox.markSyncing(id: operationID)
+            do {
+                _ = try await coreApi.saveModeBreakConfig(
+                    accessToken: accessToken, modeId: pending.coreModeID, body: request
+                )
+                guard activeAccountID == userID, activeAccessToken == accessToken,
+                      syncOutbox.isCurrent(id: operationID, revision: revision) else { continue }
+                syncOutbox.remove(id: operationID)
+            } catch {
+                guard activeAccountID == userID, activeAccessToken == accessToken,
+                      syncOutbox.isCurrent(id: operationID, revision: revision) else { continue }
+                syncOutbox.markFailure(id: operationID, error: error,
+                    retryable: !Self.isPermanentBreakConfigError(error))
             }
-            syncOutbox.markSyncing(id: operation.id)
-            await syncModeBreakConfig(
-                coreModeID: pending.coreModeID,
-                localModeID: pending.localModeID,
-                accessToken: accessToken
-            )
         }
+        refreshSyncOutboxStatus()
+    }
+
+    private static func isPermanentBreakConfigError(_ error: Error) -> Bool {
+        guard case let .serverError(status, _, _) = error as? CoreAPIError else { return false }
+        // Authentication, conflicts, throttling and server failures can recover.
+        return [400, 404, 422].contains(status)
     }
 
     private func syncPendingRitualDeletions(
@@ -1283,6 +1338,7 @@ final class BlockSetupViewModel: ObservableObject {
         )
 
         for operation in operations where syncOutbox.isDue(id: operation.id) {
+            guard activeAccountID == userID, activeAccessToken == accessToken else { return }
             guard let pending = try? JSONDecoder().decode(
                 PendingRitualDeletion.self,
                 from: operation.payload
@@ -1301,11 +1357,13 @@ final class BlockSetupViewModel: ObservableObject {
                     ),
                     idempotencyKey: operation.idempotencyKey
                 )
+                guard activeAccountID == userID, activeAccessToken == accessToken else { return }
                 ritualSessionsByRitualId.removeValue(
                     forKey: pending.coreRitualID
                 )
                 clearConfigurationOperation(operation)
             } catch {
+                guard activeAccountID == userID, activeAccessToken == accessToken else { return }
                 if Self.isRitualNotFoundError(error) {
                     clearConfigurationOperation(operation)
                 } else if Self.isForbiddenError(error) {
@@ -1326,6 +1384,7 @@ final class BlockSetupViewModel: ObservableObject {
         guard !schedulers.contains(where: { $0.id == scheduler.id }) else {
             return
         }
+        SharedRitualActivityStateStore().restoreDeleted(schedulerID: scheduler.id.uuidString)
         schedulers.insert(scheduler, at: 0)
         persistSchedulers()
         rescheduleDeviceActivities()
@@ -1373,8 +1432,9 @@ final class BlockSetupViewModel: ObservableObject {
                   self.activeAccountID == userID else {
                 return
             }
+            guard let currentToken = self.activeAccessToken else { return }
             await self.syncPendingConfigurationOperations(
-                accessToken: accessToken
+                accessToken: currentToken
             )
         }
     }
@@ -1669,15 +1729,18 @@ final class BlockSetupViewModel: ObservableObject {
     }
 
     func loadActiveRitualSession(accessToken: String) async {
-        guard !accessToken.isEmpty else { return }
+        guard let accountID = activeAccountID, activeAccessToken == accessToken, !accessToken.isEmpty else { return }
 
         do {
-            activeCoreSession = try await coreApi.getActiveRitualSession(accessToken: accessToken)
+            let result = try await coreApi.getActiveRitualSession(accessToken: accessToken)
+            guard activeAccountID == accountID, activeAccessToken == accessToken else { return }
+            activeCoreSession = result
             didResolveActiveRitualSession = true
             if let activeCoreSession {
                 coreSyncMessage = "Sesión activa en core-api: \(activeCoreSession.id)."
             }
         } catch {
+            guard activeAccountID == accountID, activeAccessToken == accessToken else { return }
             activeCoreSession = nil
             didResolveActiveRitualSession = false
             print("Core active ritual session error:", error)
@@ -1685,20 +1748,23 @@ final class BlockSetupViewModel: ObservableObject {
     }
 
     func loadRitualSessionSummary(accessToken: String) async {
-        guard !accessToken.isEmpty else { return }
+        guard let accountID = activeAccountID, activeAccessToken == accessToken, !accessToken.isEmpty else { return }
 
         isLoadingSessionSummary = true
         defer { isLoadingSessionSummary = false }
 
         do {
-            ritualSessionSummary = try await coreApi.getRitualSessionSummary(accessToken: accessToken)
+            let result = try await coreApi.getRitualSessionSummary(accessToken: accessToken)
+            guard activeAccountID == accountID, activeAccessToken == accessToken else { return }
+            ritualSessionSummary = result
         } catch {
+            guard activeAccountID == accountID, activeAccessToken == accessToken else { return }
             print("Core ritual session summary error:", error)
         }
     }
 
     func loadRitualSessionHistories(accessToken: String) async {
-        guard !accessToken.isEmpty else { return }
+        guard let accountID = activeAccountID, activeAccessToken == accessToken, !accessToken.isEmpty else { return }
 
         let ritualIds = schedulers.compactMap(\.coreRitualId)
         guard !ritualIds.isEmpty else { return }
@@ -1715,10 +1781,12 @@ final class BlockSetupViewModel: ObservableObject {
                     ritualId: ritualId
                 )
             } catch {
+                guard activeAccountID == accountID, activeAccessToken == accessToken else { return }
                 print("Core ritual session history error:", ritualId, error)
             }
         }
 
+        guard activeAccountID == accountID, activeAccessToken == accessToken else { return }
         ritualSessionsByRitualId = nextSessionsByRitualId
     }
 
@@ -1732,12 +1800,15 @@ final class BlockSetupViewModel: ObservableObject {
     }
 
     func loadActiveModeSession(accessToken: String) async {
-        guard !accessToken.isEmpty else { return }
+        guard let accountID = activeAccountID, activeAccessToken == accessToken, !accessToken.isEmpty else { return }
 
         do {
-            activeCoreModeSession = try await coreApi.getActiveModeSession(accessToken: accessToken)
+            let result = try await coreApi.getActiveModeSession(accessToken: accessToken)
+            guard activeAccountID == accountID, activeAccessToken == accessToken else { return }
+            activeCoreModeSession = result
             didResolveActiveModeSession = true
         } catch {
+            guard activeAccountID == accountID, activeAccessToken == accessToken else { return }
             activeCoreModeSession = nil
             didResolveActiveModeSession = false
             print("Core active mode session error:", error)
@@ -1745,10 +1816,11 @@ final class BlockSetupViewModel: ObservableObject {
     }
 
     func loadActiveFocusSession(accessToken: String) async {
-        guard !accessToken.isEmpty else { return }
+        guard let accountID = activeAccountID, activeAccessToken == accessToken, !accessToken.isEmpty else { return }
 
         do {
             let active = try await coreApi.getActiveFocusSession(accessToken: accessToken)
+            guard activeAccountID == accountID, activeAccessToken == accessToken else { return }
             activeCoreSession = active?.ritualSession
             activeCoreModeSession = active?.modeSession
             didResolveActiveRitualSession = true
@@ -1758,6 +1830,7 @@ final class BlockSetupViewModel: ObservableObject {
                 coreSyncMessage = "Sesión de foco activa en core-api: \(active.type)."
             }
         } catch {
+            guard activeAccountID == accountID, activeAccessToken == accessToken else { return }
             activeCoreSession = nil
             activeCoreModeSession = nil
             didResolveActiveRitualSession = false
@@ -1767,30 +1840,44 @@ final class BlockSetupViewModel: ObservableObject {
     }
 
     func loadModeSessionSummary(accessToken: String) async {
-        guard !accessToken.isEmpty else { return }
+        guard let accountID = activeAccountID, activeAccessToken == accessToken, !accessToken.isEmpty else { return }
 
         do {
-            modeSessionSummary = try await coreApi.getModeSessionSummary(accessToken: accessToken)
+            let result = try await coreApi.getModeSessionSummary(accessToken: accessToken)
+            guard activeAccountID == accountID, activeAccessToken == accessToken else { return }
+            modeSessionSummary = result
         } catch {
+            guard activeAccountID == accountID, activeAccessToken == accessToken else { return }
             print("Core mode session summary error:", error)
         }
     }
 
     func loadFocusMetricsSummary(accessToken: String) async {
-        guard !accessToken.isEmpty else { return }
+        guard let accountID = activeAccountID, !accessToken.isEmpty else { return }
+        await loadCoordinator.run(key: "loadFocusMetricsSummary:\(accountID):\(accessToken)") { [self] in
+            guard activeAccountID == accountID, activeAccessToken == accessToken else { return }
+            await perform_loadFocusMetricsSummary(accessToken: accessToken)
+        }
+    }
+
+    private func perform_loadFocusMetricsSummary(accessToken: String) async {
+        guard let accountID = activeAccountID, activeAccessToken == accessToken, !accessToken.isEmpty else { return }
 
         isLoadingFocusMetrics = true
         defer { isLoadingFocusMetrics = false }
 
         do {
-            focusMetricsSummary = try await coreApi.getFocusMetricsSummary(accessToken: accessToken)
+            let result = try await coreApi.getFocusMetricsSummary(accessToken: accessToken)
+            guard activeAccountID == accountID, activeAccessToken == accessToken else { return }
+            focusMetricsSummary = result
         } catch {
+            guard activeAccountID == accountID, activeAccessToken == accessToken else { return }
             print("Core focus metrics summary error:", error)
         }
     }
 
     func loadModeSessionHistories(accessToken: String) async {
-        guard !accessToken.isEmpty else { return }
+        guard let accountID = activeAccountID, activeAccessToken == accessToken, !accessToken.isEmpty else { return }
 
         let modeIds = modes.compactMap(\.coreModeId)
         guard !modeIds.isEmpty else { return }
@@ -1804,10 +1891,12 @@ final class BlockSetupViewModel: ObservableObject {
                     modeId: modeId
                 )
             } catch {
+                guard activeAccountID == accountID, activeAccessToken == accessToken else { return }
                 print("Core mode session history error:", modeId, error)
             }
         }
 
+        guard activeAccountID == accountID, activeAccessToken == accessToken else { return }
         modeSessionsByModeId = nextSessionsByModeId
     }
 
@@ -2059,14 +2148,13 @@ final class BlockSetupViewModel: ObservableObject {
         blocker.clearModeShield()
         reconcileSafariContentBlocking()
         notificationService.sendModeBreakStartedNotification(for: mode, minutes: minutes)
-        do {
-            try modeBreakActivityScheduler.scheduleBreakEnd(
-                for: mode,
-                accountID: activeAccountID,
-                until: breakUntil
-            )
-        } catch {
-            deviceActivityDebugStore.log("No se pudo programar DeviceActivity para fin de recreo: \(error.localizedDescription).")
+        let accountID = activeAccountID
+        modeBreakActivityScheduler.scheduleBreakEnd(
+            for: mode, accountID: accountID, until: breakUntil
+        ) { [weak self] error in
+            guard let self, self.activeAccountID == accountID,
+                  self.modeBreakUntil == breakUntil, let error else { return }
+            self.deviceActivityDebugStore.log("No se pudo programar DeviceActivity para fin de recreo de modo: \(error.localizedDescription).")
         }
         blockMessage = "Recreo activo en \(mode.title). Las restricciones vuelven en \(minutes) minutos."
         modeMessage = "Recreo de \(minutes) minutos iniciado."
@@ -2104,14 +2192,13 @@ final class BlockSetupViewModel: ObservableObject {
         clearActiveShield()
         reconcileSafariContentBlocking()
         notificationService.sendRitualBreakStartedNotification(for: scheduler, minutes: minutes)
-        do {
-            try ritualBreakActivityScheduler.scheduleBreakEnd(
-                for: scheduler,
-                accountID: activeAccountID,
-                until: breakUntil
-            )
-        } catch {
-            deviceActivityDebugStore.log("No se pudo programar DeviceActivity para fin de recreo de ritual: \(error.localizedDescription).")
+        let accountID = activeAccountID
+        ritualBreakActivityScheduler.scheduleBreakEnd(
+            for: scheduler, accountID: accountID, until: breakUntil
+        ) { [weak self] error in
+            guard let self, self.activeAccountID == accountID,
+                  self.ritualBreakUntil == breakUntil, let error else { return }
+            self.deviceActivityDebugStore.log("No se pudo programar DeviceActivity para fin de recreo de ritual: \(error.localizedDescription).")
         }
         blockMessage = "Recreo activo en \(scheduler.title). Las restricciones vuelven en \(minutes) minutos."
         schedulerMessage = "Recreo de \(minutes) minutos iniciado."
@@ -2565,6 +2652,7 @@ final class BlockSetupViewModel: ObservableObject {
             return false
         }
 
+        guard activeAccountID == accountID else { return false }
         let modeEndDate = durationMinutes.flatMap {
             Calendar.current.date(byAdding: .minute, value: $0, to: .now)
         }
@@ -2576,6 +2664,7 @@ final class BlockSetupViewModel: ObservableObject {
                     at: modeEndDate
                 )
             } catch {
+                guard activeAccountID == accountID else { return false }
                 queueCoreModeSessionFinish(
                     status: "cancelled",
                     endSource: "timer_setup_failed",
@@ -2587,6 +2676,8 @@ final class BlockSetupViewModel: ObservableObject {
         } else {
             modeEndActivityScheduler.cancelCurrent()
         }
+
+        guard activeAccountID == accountID else { return false }
 
         unblockTask?.cancel()
         countdownTimer?.invalidate()
@@ -3332,6 +3423,7 @@ final class BlockSetupViewModel: ObservableObject {
             schedulerMessage = "No se pudo guardar el ritual pendiente: \(error.localizedDescription)"
             return false
         }
+        SharedRitualActivityStateStore().restoreDeleted(schedulerID: scheduler.id.uuidString)
         schedulers.insert(scheduler, at: 0)
         persistSchedulers()
         rescheduleDeviceActivities()
@@ -3521,6 +3613,17 @@ final class BlockSetupViewModel: ObservableObject {
     }
 
     func loadCoreRituals(accessToken: String) async {
+        guard let accountID = activeAccountID, !accessToken.isEmpty else { return }
+        await loadCoordinator.run(key: "loadCoreRituals:\(accountID):\(accessToken)") { [self] in
+            guard activeAccountID == accountID, activeAccessToken == accessToken else { return }
+            await perform_loadCoreRituals(accessToken: accessToken)
+        }
+    }
+
+    private func perform_loadCoreRituals(accessToken: String) async {
+        let diagnosticSpan = AppDiagnostics.shared.begin("sync.rituals")
+        defer { AppDiagnostics.shared.end("sync.rituals", diagnosticSpan) }
+
         guard !accessToken.isEmpty,
               let accountID = activeAccountID else {
             return
@@ -3535,11 +3638,24 @@ final class BlockSetupViewModel: ObservableObject {
             guard activeAccountID == accountID else {
                 return
             }
+            AppDiagnostics.shared.event("rituals.received count=\(rituals.count)")
+            let mergeSpan = AppDiagnostics.shared.begin("rituals.merge")
             mergeCoreRituals(rituals)
+            AppDiagnostics.shared.end("rituals.merge", mergeSpan)
+            AppDiagnostics.shared.event("rituals.published count=\(schedulers.count)")
             applyRitualDeletionTombstones(userID: accountID)
+            let syncPendingSchedulersToCoreSpan = AppDiagnostics.shared.begin("rituals.outbox")
             await syncPendingSchedulersToCore(accessToken: accessToken)
+            AppDiagnostics.shared.end("rituals.outbox", syncPendingSchedulersToCoreSpan)
+            guard activeAccountID == accountID else { return }
+            let loadRitualBreakConfigsSpan = AppDiagnostics.shared.begin("rituals.breaks")
             await loadRitualBreakConfigs(accessToken: accessToken)
+            AppDiagnostics.shared.end("rituals.breaks", loadRitualBreakConfigsSpan)
+            guard activeAccountID == accountID else { return }
+            let loadRitualSessionHistoriesSpan = AppDiagnostics.shared.begin("rituals.histories")
             await loadRitualSessionHistories(accessToken: accessToken)
+            AppDiagnostics.shared.end("rituals.histories", loadRitualSessionHistoriesSpan)
+            guard activeAccountID == accountID else { return }
             coreSyncMessage = schedulers.isEmpty ? "Todavia no hay rituales sincronizados." : "Rituales sincronizados."
         } catch {
             coreSyncMessage = error.localizedDescription
@@ -3612,6 +3728,8 @@ final class BlockSetupViewModel: ObservableObject {
                 removeQueuedRitualConfiguration(scheduler)
             }
 
+            SharedRitualActivityStateStore().markDeleted(schedulerID: scheduler.id.uuidString)
+            AppDiagnostics.shared.blockingRecovery("ritual_deleted")
             schedulers.removeAll { $0.id == scheduler.id }
 
             if selectedSchedulerID == scheduler.id {
@@ -3650,10 +3768,23 @@ final class BlockSetupViewModel: ObservableObject {
     }
 
     func loadCoreModes(accessToken: String) async {
+        guard let accountID = activeAccountID, !accessToken.isEmpty else { return }
+        await loadCoordinator.run(key: "loadCoreModes:\(accountID):\(accessToken)") { [self] in
+            guard activeAccountID == accountID, activeAccessToken == accessToken else { return }
+            await perform_loadCoreModes(accessToken: accessToken)
+        }
+    }
+
+    private func perform_loadCoreModes(accessToken: String) async {
+        guard let accountID = activeAccountID else { return }
+        let diagnosticSpan = AppDiagnostics.shared.begin("sync.modes")
+        defer { AppDiagnostics.shared.end("sync.modes", diagnosticSpan) }
+
         guard !accessToken.isEmpty else { return }
 
         do {
             let coreModes = try await coreApi.listModes(accessToken: accessToken)
+            guard activeAccountID == accountID, activeAccessToken == accessToken else { return }
             mergeCoreModes(coreModes)
             await syncPendingModesToCore(accessToken: accessToken)
             await loadModeBreakConfigs(accessToken: accessToken)
@@ -4157,20 +4288,64 @@ final class BlockSetupViewModel: ObservableObject {
         return result
     }
 
-    private func rescheduleDeviceActivities() {
-        do {
-            let monitorableSchedulers = schedulers.filter { !isSchedulerSuppressed($0) }
-            try deviceActivityScheduler.reschedule(
-                monitorableSchedulers,
-                userID: activeAccountID
-            )
-            notificationService.rescheduleNotifications(for: monitorableSchedulers)
-        } catch {
-            schedulerMessage = "No se pudieron programar los rituales automaticos: \(error.localizedDescription)"
-            deviceActivityDebugStore.log("Error startMonitoring: \(error.localizedDescription)")
-            print("Device activity scheduling error:", error)
+    var liveActivityAccountID: String? { activeAccountID }
+
+    // A presentation snapshot: it never changes DeviceActivity or blocking state.
+    var liveActivityInput: FocusLiveActivityInput {
+        guard let accountID = activeAccountID, isAuthorized else {
+            return FocusLiveActivityInput(active: nil, upcoming: nil)
         }
-        refreshDeviceActivityDebugEvents()
+        let now = Date.now
+        var active: FocusLiveActivityInput.Entry?
+        if isBlocking {
+            let ritual = currentBlockingScheduler
+            let mode = currentBlockingMode
+            let end = blockedUntil
+            let start = ritual.flatMap { item in
+                end.map { $0.addingTimeInterval(-Double(item.durationMinutes * 60)) }
+            } ?? Self.parseISODate(activeCoreModeSession?.startedAt)
+                ?? end.map { $0.addingTimeInterval(-Double(selectedDuration.minutes * 60)) }
+                ?? .distantPast
+            let breakEnd = (ritual == nil ? modeBreakUntil : ritualBreakUntil).flatMap { $0 > now ? $0 : nil }
+            let breakMinutes = ritual?.breakDurationMinutes ?? mode?.breakDurationMinutes ?? 5
+            let key = ritual.map { "ritual:\($0.id.uuidString):\(end?.timeIntervalSince1970 ?? 0)" }
+                ?? "mode:\(activeCoreModeSession?.id ?? mode?.id ?? "manual"):\(end?.timeIntervalSince1970 ?? 0)"
+            active = .init(id: "\(accountID):\(key)", state: .init(
+                title: ritual?.title ?? mode?.title ?? "Mi foco", startedAt: start, endsAt: end,
+                breakStartedAt: breakEnd.map { $0.addingTimeInterval(-Double(breakMinutes * 60)) },
+                breakEndsAt: breakEnd, scheduled: false))
+        }
+        // Queue only the nearest occurrence, so we don't consume the system's
+        // limited Live Activity slots with a whole week of cards.
+        let upcoming = schedulers.filter { $0.selectedItemCount > 0 && $0.durationMinutes >= 15 }
+            .compactMap { ritual -> FocusLiveActivityInput.Entry? in
+                guard let interval = LiveActivitySchedulePlanner.next(weekdays: ritual.weekdays,
+                    startHour: ritual.startHour, startMinute: ritual.startMinute,
+                    endHour: ritual.endHour, endMinute: ritual.endMinute, now: now) else { return nil }
+                let start = interval.start
+                let end = interval.end
+                return .init(id: "\(accountID):ritual:\(ritual.id.uuidString):\(end.timeIntervalSince1970)",
+                    state: .init(title: ritual.title, startedAt: start, endsAt: end,
+                                 breakStartedAt: nil, breakEndsAt: nil, scheduled: true))
+            }.min { $0.state.startedAt < $1.state.startedAt }
+        return FocusLiveActivityInput(active: active, upcoming: upcoming)
+    }
+
+    private func rescheduleDeviceActivities() {
+        let accountID = activeAccountID
+        // Suppression applies only until this occurrence ends. Keep recurring
+        // monitors registered so the next occurrence can start without the app.
+        // The extension checks the shared suppression expiry before shielding.
+        let monitorableSchedulers = schedulers
+        deviceActivityScheduler.reschedule(monitorableSchedulers, userID: accountID) { [weak self] error in
+            guard let self, self.activeAccountID == accountID else { return }
+            if let error {
+                self.schedulerMessage = "No se pudieron programar los rituales automaticos: \(error.localizedDescription)"
+                self.deviceActivityDebugStore.log("Error startMonitoring: \(error.localizedDescription)")
+            }
+            self.refreshDeviceActivityDebugEvents()
+        }
+        notificationService.rescheduleNotifications(for: schedulers.filter { !isSchedulerSuppressed($0) })
     }
 
     private func preemptActiveModeForScheduledRitual(
@@ -4224,14 +4399,46 @@ final class BlockSetupViewModel: ObservableObject {
     }
 
     func refreshScheduledRitualState() {
+        let diagnosticSpan = AppDiagnostics.shared.begin("block.reconcile")
+        defer { AppDiagnostics.shared.end("block.reconcile", diagnosticSpan) }
+
         defer { hasReconciledBreakState = true }
         refreshDeviceActivityDebugEvents()
         removeExpiredScheduledSuppressions()
-        guard isAuthorized else { return }
+        guard isAuthorized, activeAccountID != nil else { return }
 
         let currentScheduler = schedulers.first { scheduler in
             scheduler.selectedItemCount > 0 && scheduler.isActive() && !isSchedulerSuppressed(scheduler)
         }
+        // Local UI state can be empty while the extension still owns a shield.
+        // Prune shared occurrences too, so a heartbeat cannot reapply them.
+        let activityState = SharedRitualActivityStateStore()
+        let metadataStore = SharedRitualActivityMetadataStore()
+        let activeIDs = Set(schedulers.filter {
+            $0.selectedItemCount > 0 && $0.isActive() && !isSchedulerSuppressed($0)
+        }.map { $0.id.uuidString })
+        for activity in activityState.activeActivities() {
+            guard let metadata = metadataStore.loadMetadata(for: activity.activityName),
+                  activeIDs.contains(metadata.schedulerId),
+                  !activityState.isDeleted(schedulerID: metadata.schedulerId),
+                  !activity.hasExpired(endHour: metadata.endHour,
+                      endMinute: metadata.endMinute, plannedEndAt: metadata.plannedEndAt) else {
+                activityState.remove(activityName: activity.activityName)
+                continue
+            }
+        }
+        if currentScheduler == nil {
+            // Manual rituals share the ritual store; modes have their own store.
+            if case .manual = activeBlockSource {
+                // Keep an explicitly active manual ritual intact.
+            } else {
+                if blocker.clearOrphanedRitualShield() {
+                    AppDiagnostics.shared.blockingRecovery("orphaned_ritual_shield_cleared")
+                }
+                blocker.clearScheduledStrictModeRestriction()
+            }
+        }
+
         let hasActiveMode = activeCoreModeSession != nil || {
             if isBlocking, case .mode = activeBlockSource { return true }
             return false
@@ -4247,6 +4454,9 @@ final class BlockSetupViewModel: ObservableObject {
             if isBlocking,
                case .scheduled(let schedulerID) = activeBlockSource,
                schedulerID == scheduler.id {
+                // A repeated ritual keeps its ID across days. Recheck the
+                // occurrence even when we can reuse the current blocking state.
+                restoreRitualBreakUsage(for: scheduler)
                 if blockedUntil == nil {
                     blockedUntil = scheduler.endDate()
                 }
@@ -4298,6 +4508,8 @@ final class BlockSetupViewModel: ObservableObject {
         queueCoreSessionFinish(status: "completed", endSource: "timer", scheduler: scheduler)
         heartbeatScheduler.cancelCurrent()
         clearActiveShield()
+        clearRitualBreakState()
+        resetRitualBreakUsage()
         if case .scheduled = source {
             // The scheduled notification already announces the end of the ritual.
         } else {
@@ -4603,7 +4815,6 @@ final class BlockSetupViewModel: ObservableObject {
         let suppressionEnd = scheduler.endDate() ?? blockedUntil ?? Calendar.current.date(byAdding: .minute, value: 5, to: .now) ?? .now
         suppressedScheduledBlocks[scheduler.id] = suppressionEnd
         saveScheduledSuppressions()
-        deviceActivityScheduler.stopMonitoringCurrentInterval(for: scheduler)
         rescheduleDeviceActivities()
         deviceActivityDebugStore.log("Scheduler \(scheduler.title) suprimido hasta \(suppressionEnd).")
 
@@ -4643,7 +4854,6 @@ final class BlockSetupViewModel: ObservableObject {
         guard !activeSuppressions.isEmpty else { return }
 
         for scheduler in activeSuppressions {
-            deviceActivityScheduler.stopMonitoringCurrentInterval(for: scheduler, on: now)
             deviceActivityDebugStore.log(
                 "Supresión restaurada para \(scheduler.title) hasta \(suppressedScheduledBlocks[scheduler.id] ?? now)."
             )
@@ -4733,7 +4943,9 @@ final class BlockSetupViewModel: ObservableObject {
                 await self.loadRitualSessionSummary(accessToken: accessToken)
                 await self.loadRitualSessionHistories(accessToken: accessToken)
                 await self.loadFocusMetricsSummary(accessToken: accessToken)
+                #if DEBUG
                 print("Core ritual session started:", session.id)
+                #endif
             } catch {
                 self.coreSyncMessage = error.localizedDescription
                 if self.isFocusSessionConflict(error) {
@@ -5203,19 +5415,37 @@ final class BlockSetupViewModel: ObservableObject {
         ritualBreakUsedCount += 1
         defaults.set(scheduler.id.uuidString, forKey: ritualBreakUsedSchedulerIDKey)
         defaults.set(ritualBreakUsedCount, forKey: ritualBreakUsedCountKey)
+        defaults.set(Date.now, forKey: ritualBreakUsedAtKey)
     }
 
     private func resetRitualBreakUsage() {
         ritualBreakUsedCount = 0
         defaults.removeObject(forKey: ritualBreakUsedSchedulerIDKey)
         defaults.removeObject(forKey: ritualBreakUsedCountKey)
+        defaults.removeObject(forKey: ritualBreakUsedAtKey)
     }
 
+    /// Breaks renew with every occurrence of a ritual. A scheduled ritual that
+    /// ends on its own (extension or timer) never passes through `endBlock`, so
+    /// the persisted count must be judged against the current occurrence: usage
+    /// recorded before this occurrence started is stale and discarded.
     private func restoreRitualBreakUsage(for scheduler: RitualScheduler) {
         let usedSchedulerID = defaults.string(forKey: ritualBreakUsedSchedulerIDKey)
-        ritualBreakUsedCount = usedSchedulerID == scheduler.id.uuidString
-            ? defaults.integer(forKey: ritualBreakUsedCountKey)
-            : 0
+        guard usedSchedulerID == scheduler.id.uuidString else {
+            ritualBreakUsedCount = 0
+            return
+        }
+
+        let usedAt = defaults.object(forKey: ritualBreakUsedAtKey) as? Date
+        let cycleStart = scheduler.occurrenceStart()
+            ?? Date().addingTimeInterval(-24 * 60 * 60)
+        guard let usedAt, usedAt >= cycleStart else {
+            resetRitualBreakUsage()
+            deviceActivityDebugStore.log("Recreos de \(scheduler.title) renovados (nueva ocurrencia).")
+            return
+        }
+
+        ritualBreakUsedCount = defaults.integer(forKey: ritualBreakUsedCountKey)
     }
 
     private func queueCoreSessionFinish(
@@ -5716,7 +5946,8 @@ final class BlockSetupViewModel: ObservableObject {
 
     private func applyCoreRitualResponse(
         _ response: RitualResponse,
-        localSchedulerID: UUID
+        localSchedulerID: UUID,
+        preserveLocalProtection: Bool = false
     ) {
         guard let index = schedulers.firstIndex(
             where: { $0.id == localSchedulerID }
@@ -5738,8 +5969,8 @@ final class BlockSetupViewModel: ObservableObject {
             endMinute: scheduler.endMinute,
             weekdays: scheduler.weekdays,
             selection: scheduler.selection,
-            isProtected: response.isProtected,
-            nfcUnlockEnabled: response.nfcUnlockEnabled,
+            isProtected: preserveLocalProtection ? scheduler.isProtected : response.isProtected,
+            nfcUnlockEnabled: preserveLocalProtection ? scheduler.nfcUnlockEnabled : response.nfcUnlockEnabled,
             strictModeEnabled: scheduler.strictModeEnabled,
             blockAppInstallation: scheduler.blockAppInstallation,
             blockAdultContent: scheduler.blockAdultContent,

@@ -80,9 +80,10 @@ final class RitualNotificationService {
         }
 
         let content = UNMutableNotificationContent()
-        content.title = "Ritual activo"
+        content.title = "Tu momento de foco empezó"
         content.body = startNotificationBody(for: scheduler)
         content.sound = .default
+        RituoNotificationStyle.apply(to: content, name: scheduler.title, groupID: scheduler.id.uuidString, event: "start", detail: "Horario: \(scheduler.timeRangeText)")
 
         let request = UNNotificationRequest(
             identifier: "rituo.ritual.started.\(scheduler.id.uuidString)",
@@ -102,8 +103,9 @@ final class RitualNotificationService {
     func sendRitualStoppedNotification(for scheduler: RitualScheduler?, endSource: String) {
         let content = UNMutableNotificationContent()
         content.title = "Ritual desactivado"
-        content.body = scheduler.map { "\($0.title) se detuvo. Las apps vuelven a estar disponibles." } ?? "Se detuvo el ritual activo. Las apps vuelven a estar disponibles."
+        content.body = scheduler.map { "\($0.title) se detuvo para esta ocasión." } ?? "Se detuvo el ritual activo para esta ocasión."
         content.sound = .default
+        RituoNotificationStyle.apply(to: content, name: scheduler?.title ?? "Tu ritual", groupID: scheduler?.id.uuidString ?? "ritual", event: "stop", detail: nil)
 
         let request = UNNotificationRequest(
             identifier: "rituo.ritual.stopped.\(scheduler?.id.uuidString ?? UUID().uuidString).\(endSource)",
@@ -116,9 +118,10 @@ final class RitualNotificationService {
 
     func sendRitualBreakStartedNotification(for scheduler: RitualScheduler, minutes: Int) {
         let content = UNMutableNotificationContent()
-        content.title = "Recreo activado"
+        content.title = "Tomate un respiro"
         content.body = "\(scheduler.title) está en pausa por \(minutes) minutos. Las apps vuelven a bloquearse al terminar."
         content.sound = .default
+        RituoNotificationStyle.apply(to: content, name: scheduler.title, groupID: scheduler.id.uuidString, event: "break-start", detail: "Recreo de \(minutes) min")
 
         let request = UNNotificationRequest(
             identifier: ritualBreakStartedNotificationIdentifier(for: scheduler),
@@ -147,9 +150,10 @@ final class RitualNotificationService {
 
     func sendModeBreakStartedNotification(for mode: FocusMode, minutes: Int) {
         let content = UNMutableNotificationContent()
-        content.title = "Recreo activado"
+        content.title = "Tomate un respiro"
         content.body = "\(mode.title) está en pausa por \(minutes) minutos. Las apps vuelven a bloquearse al terminar."
         content.sound = .default
+        RituoNotificationStyle.apply(to: content, name: mode.title, groupID: mode.id, event: "break-start", detail: "Recreo de \(minutes) min")
 
         let request = UNNotificationRequest(
             identifier: modeBreakStartedNotificationIdentifier(for: mode),
@@ -173,9 +177,10 @@ final class RitualNotificationService {
 
         let secondsUntilEnd = max(1, date.timeIntervalSinceNow)
         let content = UNMutableNotificationContent()
-        content.title = "Recreo terminado"
+        content.title = "Volvé a tu foco"
         content.body = "\(mode.title) volvió a aplicar tus restricciones."
         content.sound = .default
+        RituoNotificationStyle.apply(to: content, name: mode.title, groupID: mode.id, event: "break-end", detail: nil)
 
         let request = UNNotificationRequest(
             identifier: modeBreakEndedNotificationIdentifier(for: mode),
@@ -211,8 +216,9 @@ final class RitualNotificationService {
         let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: nextDate)
         let content = UNMutableNotificationContent()
         content.title = "Ritual finalizado"
-        content.body = "\(scheduler.title) terminó. Las apps vuelven a estar disponibles."
+        content.body = "\(scheduler.title) terminó su horario programado."
         content.sound = .default
+        RituoNotificationStyle.apply(to: content, name: scheduler.title, groupID: scheduler.id.uuidString, event: "end", detail: nil)
 
         let request = UNNotificationRequest(
             identifier: nextEndNotificationIdentifier(for: scheduler),
@@ -237,9 +243,10 @@ final class RitualNotificationService {
 
         let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: nextDate)
         let content = UNMutableNotificationContent()
-        content.title = "Tu ritual empieza ahora"
+        content.title = "Tu momento de foco empezó"
         content.body = startNotificationBody(for: scheduler)
         content.sound = .default
+        RituoNotificationStyle.apply(to: content, name: scheduler.title, groupID: scheduler.id.uuidString, event: "start", detail: "Horario: \(scheduler.timeRangeText)")
 
         let request = UNNotificationRequest(
             identifier: nextNotificationIdentifier(for: scheduler),
@@ -269,8 +276,9 @@ final class RitualNotificationService {
 
             let content = UNMutableNotificationContent()
             content.title = "Ritual finalizado"
-            content.body = "\(scheduler.title) terminó. Las apps vuelven a estar disponibles."
+            content.body = "\(scheduler.title) terminó su horario programado."
             content.sound = .default
+            RituoNotificationStyle.apply(to: content, name: scheduler.title, groupID: scheduler.id.uuidString, event: "end", detail: nil)
 
             let request = UNNotificationRequest(
                 identifier: endNotificationIdentifier(for: scheduler, weekday: weekday),
@@ -297,9 +305,10 @@ final class RitualNotificationService {
             components.minute = scheduler.startMinute
 
             let content = UNMutableNotificationContent()
-            content.title = "Tu ritual empieza ahora"
+            content.title = "Tu momento de foco empezó"
             content.body = startNotificationBody(for: scheduler)
             content.sound = .default
+            RituoNotificationStyle.apply(to: content, name: scheduler.title, groupID: scheduler.id.uuidString, event: "start", detail: "Horario: \(scheduler.timeRangeText)")
 
             let request = UNNotificationRequest(
                 identifier: notificationIdentifier(for: scheduler, weekday: weekday),

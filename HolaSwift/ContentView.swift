@@ -16,6 +16,8 @@ private final class InitialViewHapticPlayer {
     func playOnce() {
         guard !hasPlayed else { return }
         hasPlayed = true
+        let span = AppDiagnostics.shared.begin("startup.haptics")
+        defer { AppDiagnostics.shared.end("startup.haptics", span) }
 
         guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else {
             UIImpactFeedbackGenerator(style: .heavy).impactOccurred(intensity: 1.0)
@@ -61,6 +63,7 @@ struct RituoRootView: View {
     @ObservedObject private var familyAuthorizationCenter = AuthorizationCenter.shared
     @StateObject private var authViewModel = AuthViewModel()
     @StateObject private var blockViewModel = BlockSetupViewModel()
+    @State private var refreshCoordinator = AsyncLoadCoordinator()
     @State private var selectedTab: RootTab = .home
     @State private var isNfcRequiredSheetPresented = false
     @State private var presentedAppUpdate: AppUpdateStatusResponse?
@@ -73,12 +76,10 @@ struct RituoRootView: View {
 
     var body: some View {
         Group {
-            if authViewModel.isRestoringSession {
-                RituoSessionRestoreView()
+            if authViewModel.isRestoringSession || (authViewModel.isAuthenticated && !authViewModel.hasCheckedLegalRequirements) {
+                RituoSessionRestoreView(authViewModel: authViewModel)
             } else if authViewModel.isAuthenticated {
-                if !authViewModel.hasCheckedLegalRequirements {
-                    LegalRequirementsLoadingView(authViewModel: authViewModel)
-                } else if authViewModel.legalRequirements?.requiresAcceptance == true {
+                if authViewModel.legalRequirements?.requiresAcceptance == true {
                     LegalAcceptanceView(authViewModel: authViewModel)
                 } else if shouldPresentProtectionOnboarding {
                     ProtectionOnboardingView(
@@ -104,6 +105,22 @@ struct RituoRootView: View {
             } else {
                 LoginLandingView(authViewModel: authViewModel)
             }
+        }
+        .onAppear {
+            AppDiagnostics.shared.event("root.appeared route=\(diagnosticRoute)")
+        }
+        .task(id: liveActivitySyncTrigger) {
+            switch liveActivitySyncTrigger.state {
+            case .waiting(let accountID):
+                FocusLiveActivityService.shared.waitForSession(retainingAccountID: accountID)
+            case .signedOut:
+                FocusLiveActivityService.shared.synchronize(.init(active: nil, upcoming: nil))
+            case .ready(let input):
+                FocusLiveActivityService.shared.synchronize(input)
+            }
+        }
+        .onChange(of: diagnosticRoute) { _, route in
+            AppDiagnostics.shared.event("root.route=\(route)")
         }
         .animation(.easeInOut(duration: 0.24), value: authViewModel.isAuthenticated)
         .sheet(item: $presentedAppUpdate) { status in
@@ -199,11 +216,11 @@ struct RituoRootView: View {
         .task(
             id: "\(authViewModel.accessToken ?? "signed-out"):\(authViewModel.isRestoringSession)"
         ) {
-            blockViewModel.updateAccessToken(authViewModel.accessToken)
+            blockViewModel.updateAccessToken(authViewModel.isRestoringSession ? nil : authViewModel.accessToken)
             blockViewModel.configureAppReviewAccount(
                 email: authViewModel.authUser?.email
             )
-            if authViewModel.accessToken != nil {
+            if !authViewModel.isRestoringSession, authViewModel.accessToken != nil {
                 await authViewModel.loadLegalRequirements()
             } else if !authViewModel.isRestoringSession {
                 blockViewModel.clearAuthenticatedState()
@@ -220,20 +237,11 @@ struct RituoRootView: View {
                 return
             }
 
-                blockViewModel.updateAuthenticatedUserID(authViewModel.authUser?.id)
-                blockViewModel.configureAppReviewAccount(
-                    email: authViewModel.authUser?.email
-                )
-                await checkForSupportReset(accessToken: accessToken)
-                await blockViewModel.loadCoreRituals(accessToken: accessToken)
-                await blockViewModel.loadCoreModes(accessToken: accessToken)
-                await blockViewModel.syncPendingDeviceActivityEvents(accessToken: accessToken)
-                await blockViewModel.refreshFocusSessionState(accessToken: accessToken)
-                blockViewModel.reconcileActiveFocusSession()
-                await blockViewModel.loadFocusMetricsSummary(accessToken: accessToken)
-                await blockViewModel.loadNfcTagClaims(accessToken: accessToken)
+            await refreshAuthenticatedContent(accessToken: accessToken)
         }
-        .task(id: authViewModel.authUser?.id) {
+        .task(id: "\(authViewModel.authUser?.id ?? "signed-out"):\(authViewModel.isRestoringSession)") {
+            guard !authViewModel.isRestoringSession else { return }
+            blockViewModel.updateAccessToken(authViewModel.accessToken)
             blockViewModel.updateAuthenticatedUserID(authViewModel.authUser?.id)
             await restoreProtectionAuthorizationIfNeeded()
             blockViewModel.reconcileActiveFocusSession()
@@ -243,6 +251,7 @@ struct RituoRootView: View {
             isNfcRequiredSheetPresented = true
         }
         .onChange(of: scenePhase) { _, phase in
+            AppDiagnostics.shared.setActive(phase == .active)
             if phase == .active {
                 protectionOnboardingRefreshID += 1
                 Task {
@@ -253,19 +262,66 @@ struct RituoRootView: View {
                 if authViewModel.canEnterAuthenticatedApp,
                    let accessToken = authViewModel.accessToken {
                     Task {
-                        blockViewModel.updateAuthenticatedUserID(authViewModel.authUser?.id)
-                        await checkForSupportReset(accessToken: accessToken)
-                        await blockViewModel.loadCoreRituals(accessToken: accessToken)
-                        await blockViewModel.loadCoreModes(accessToken: accessToken)
-                        await blockViewModel.syncPendingDeviceActivityEvents(accessToken: accessToken)
-                        await blockViewModel.refreshFocusSessionState(accessToken: accessToken)
-                        blockViewModel.reconcileActiveFocusSession()
-                        await blockViewModel.loadFocusMetricsSummary(accessToken: accessToken)
-                        await blockViewModel.loadNfcTagClaims(accessToken: accessToken)
+                        await refreshAuthenticatedContent(accessToken: accessToken)
                     }
                 }
             }
         }
+    }
+
+    private struct LiveActivitySyncTrigger: Equatable {
+        var state: FocusLiveActivitySyncState
+        var isForeground: Bool
+    }
+
+    private var liveActivitySyncTrigger: LiveActivitySyncTrigger {
+        LiveActivitySyncTrigger(state: .resolve(
+            isRestoring: authViewModel.isRestoringSession,
+            authenticatedAccountID: authViewModel.isAuthenticated ? authViewModel.authUser?.id : nil,
+            restoredAccountID: blockViewModel.liveActivityAccountID,
+            hasCheckedLegal: authViewModel.hasCheckedLegalRequirements,
+            canEnter: authViewModel.canEnterAuthenticatedApp,
+            input: blockViewModel.liveActivityInput),
+            isForeground: scenePhase == .active)
+    }
+
+    private func refreshAuthenticatedContent(accessToken: String) async {
+        guard let userID = authViewModel.authUser?.id else { return }
+        await refreshCoordinator.run(key: "\(userID):\(accessToken)") {
+            let span = AppDiagnostics.shared.begin("sync.authenticated")
+            defer { AppDiagnostics.shared.end("sync.authenticated", span) }
+            @MainActor func isCurrent() -> Bool {
+                authViewModel.canEnterAuthenticatedApp &&
+                authViewModel.authUser?.id == userID && authViewModel.accessToken == accessToken
+            }
+            guard isCurrent() else { return }
+            blockViewModel.updateAccessToken(accessToken)
+            blockViewModel.updateAuthenticatedUserID(userID)
+            blockViewModel.configureAppReviewAccount(email: authViewModel.authUser?.email)
+            await checkForSupportReset(accessToken: accessToken)
+            guard isCurrent() else { return }
+            await blockViewModel.loadCoreRituals(accessToken: accessToken)
+            guard isCurrent() else { return }
+            await blockViewModel.loadCoreModes(accessToken: accessToken)
+            guard isCurrent() else { return }
+            await blockViewModel.syncPendingDeviceActivityEvents(accessToken: accessToken)
+            guard isCurrent() else { return }
+            await blockViewModel.refreshFocusSessionState(accessToken: accessToken)
+            guard isCurrent() else { return }
+            blockViewModel.reconcileActiveFocusSession()
+            await blockViewModel.loadFocusMetricsSummary(accessToken: accessToken)
+            guard isCurrent() else { return }
+            await blockViewModel.loadNfcTagClaims(accessToken: accessToken)
+        }
+    }
+
+    private var diagnosticRoute: String {
+        if authViewModel.isRestoringSession { return "restoring" }
+        if !authViewModel.isAuthenticated { return "login" }
+        if !authViewModel.hasCheckedLegalRequirements { return "legal_loading" }
+        if authViewModel.legalRequirements?.requiresAcceptance == true { return "legal_acceptance" }
+        if shouldPresentProtectionOnboarding { return "protection" }
+        return "tabs"
     }
 
     private var shouldPresentProtectionOnboarding: Bool {
@@ -311,6 +367,11 @@ struct RituoRootView: View {
     }
 
     private func checkForAppUpdate() async {
+        #if DEBUG
+        // Local builds may keep an older build number while testing newer code.
+        // App Store updates would replace that code and block device testing.
+        presentedAppUpdate = nil
+        #else
         do {
             let status = try await CoreApiService.shared.getAppUpdateStatus()
             guard status.updateAvailable else {
@@ -325,6 +386,7 @@ struct RituoRootView: View {
         } catch {
             print("App update status error:", error)
         }
+        #endif
     }
 
     private func checkForSupportReset(accessToken: String) async {
@@ -357,14 +419,18 @@ struct RituoRootView: View {
     }
 
     private var mainTabs: some View {
-        selectedPage
-            .overlay(alignment: .bottom) {
-                RituoFloatingTabBar(selectedTab: $selectedTab)
-            }
-            .overlay(alignment: .top) {
-                RituoTopChromeFade()
-                    .allowsHitTesting(false)
-            }
+        ZStack(alignment: .bottom) {
+            selectedPage
+                .onAppear { AppDiagnostics.shared.event("page.appeared tab=\(selectedTab)") }
+            RituoFloatingTabBar(selectedTab: $selectedTab)
+        }
+        .onAppear { AppDiagnostics.shared.event("tabs.appeared") }
+        .onChange(of: selectedTab) { oldTab, newTab in
+            AppDiagnostics.shared.event("navigation.selection from=\(oldTab) to=\(newTab)")
+        }
+        .overlay(alignment: .top) {
+            RituoTopChromeFade().allowsHitTesting(false)
+        }
     }
 
     @ViewBuilder
@@ -386,6 +452,8 @@ struct RituoRootView: View {
                 viewModel: blockViewModel,
                 accessToken: authViewModel.accessToken
             )
+        case .ranking:
+            RankingPage(accessToken: authViewModel.accessToken)
         case .profile:
             ProfilePage(
                 viewModel: blockViewModel,
@@ -434,76 +502,108 @@ private struct OfflineSessionBanner: View {
 }
 
 struct RituoSessionRestoreView: View {
-    @State private var breathes = false
-    @State private var rotates = false
-    @State private var appeared = false
+    @ObservedObject var authViewModel: AuthViewModel
 
     var body: some View {
         ZStack {
-            RituoAnimatedBackground()
+            RituoLaunchGlowBackground()
 
-            // Glow central
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            RituoPalette.white.opacity(breathes ? 0.30 : 0.14),
-                            RituoPalette.lightBlue.opacity(breathes ? 0.16 : 0.06),
-                            Color.clear
-                        ],
-                        center: .center, startRadius: 0, endRadius: 160
-                    )
-                )
-                .frame(width: 340, height: 340)
-                .blur(radius: 46)
-                .scaleEffect(breathes ? 1.08 : 0.92)
-                .allowsHitTesting(false)
-
-            VStack(spacing: 28) {
-                ZStack {
-                    // Anillo orbital
-                    Circle()
-                        .stroke(RituoPalette.white.opacity(0.10), lineWidth: 1)
-                        .frame(width: 168, height: 168)
-
-                    // Arco giratorio
-                    Circle()
-                        .trim(from: 0, to: 0.22)
-                        .stroke(
-                            LinearGradient(
-                                colors: [.clear, RituoPalette.white.opacity(0.85), RituoPalette.lightBlue.opacity(0.5), .clear],
-                                startPoint: .leading, endPoint: .trailing
-                            ),
-                            style: StrokeStyle(lineWidth: 2, lineCap: .round)
-                        )
-                        .frame(width: 168, height: 168)
-                        .rotationEffect(.degrees(rotates ? 360 : 0))
-                        .shadow(color: RituoPalette.white.opacity(0.60), radius: 8)
-
-                    Image("RituoLogoWhite")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 128)
-                        .shadow(color: RituoPalette.white.opacity(0.30), radius: 26)
+            Image("RituoLogoWhite")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 140)
+                .accessibilityLabel("Rituo, cargando")
+        }
+        .overlay(alignment: .bottom) {
+            if !authViewModel.isRestoringSession,
+               !authViewModel.isLoadingLegalRequirements,
+               let error = authViewModel.legalRequirementsError {
+                VStack(spacing: 16) {
+                    Text(error)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.white.opacity(0.8))
+                    Button("Volver a intentar") {
+                        Task { await authViewModel.loadLegalRequirements() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    Button("Cerrar sesión") { authViewModel.signOut() }
+                        .foregroundStyle(.white)
                 }
-                .opacity(appeared ? 1 : 0)
-                .scaleEffect(appeared ? 1 : 0.88)
-
-                Text("Preparando tu espacio de foco")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(RituoPalette.white.opacity(0.42))
-                    .opacity(appeared ? 1 : 0)
+                .padding(28)
+                .padding(.bottom, 24)
             }
         }
         .onAppear {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.78)) {
-                appeared = true
+            AppDiagnostics.shared.event("restore_screen.appeared")
+        }
+    }
+}
+
+
+/// Composited gradients keep the launch animation lightweight; the logo is a separate layer.
+private struct RituoLaunchGlowBackground: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var illuminated = false
+
+    var body: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let height = geometry.size.height
+            ZStack {
+                Image("RituoAppBackground")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: width, height: height)
+
+                // Broad blue light fields move behind the stationary brand mark.
+                Ellipse()
+                    .fill(RadialGradient(
+                        colors: [Color(red: 0.30, green: 0.72, blue: 1).opacity(0.48), .clear],
+                        center: .center, startRadius: 0, endRadius: width * 0.65
+                    ))
+                    .frame(width: width * 1.5, height: height * 0.85)
+                    .rotationEffect(.degrees(illuminated ? 24 : -22))
+                    .offset(x: illuminated ? width * 0.25 : -width * 0.35,
+                            y: illuminated ? -height * 0.18 : height * 0.26)
+                    .blendMode(.screen)
+
+                Ellipse()
+                    .fill(RadialGradient(
+                        colors: [Color(red: 0.35, green: 0.46, blue: 1).opacity(0.38), .clear],
+                        center: .center, startRadius: 0, endRadius: width * 0.55
+                    ))
+                    .frame(width: width * 1.3, height: height * 0.7)
+                    .offset(x: illuminated ? -width * 0.3 : width * 0.3,
+                            y: illuminated ? height * 0.28 : -height * 0.3)
+                    .blendMode(.screen)
+
+                // A soft diagonal sheen, with no flashes or particles.
+                Rectangle()
+                    .fill(LinearGradient(
+                        stops: [.init(color: .clear, location: 0),
+                                .init(color: Color(red: 0.66, green: 0.85, blue: 1).opacity(0.02), location: 0.35),
+                                .init(color: Color(red: 0.66, green: 0.85, blue: 1).opacity(0.16), location: 0.5),
+                                .init(color: .clear, location: 0.7)],
+                        startPoint: .leading, endPoint: .trailing
+                    ))
+                    .frame(width: width * 1.1, height: height * 1.6)
+                    .rotationEffect(.degrees(24))
+                    .offset(x: illuminated ? width * 0.8 : -width * 0.8)
+                    .blendMode(.screen)
             }
-            withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
-                breathes = true
-            }
-            withAnimation(.linear(duration: 6).repeatForever(autoreverses: false)) {
-                rotates = true
+            .frame(width: width, height: height)
+            .clipped()
+        }
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
+        .allowsHitTesting(false)
+        .task(id: reduceMotion) {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { illuminated = false }
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 5).repeatForever(autoreverses: true)) {
+                illuminated = true
             }
         }
     }

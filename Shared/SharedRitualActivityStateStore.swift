@@ -3,6 +3,20 @@ import Foundation
 struct SharedActiveRitualActivity: Codable {
     let activityName: String
     let startedAt: Date
+
+    // Anchor the end to this occurrence, never to today's date: a missed end
+    // callback must not extend yesterday's ritual into the next occurrence.
+    func hasExpired(endHour: Int?, endMinute: Int?, plannedEndAt: Date?,
+                    now: Date = .now, calendar: Calendar = .current) -> Bool {
+        if let hour = endHour, let minute = endMinute,
+           (0...23).contains(hour), (0...59).contains(minute) {
+            let end = calendar.nextDate(after: startedAt,
+                matching: DateComponents(hour: hour, minute: minute, second: 0),
+                matchingPolicy: .nextTime, repeatedTimePolicy: .first)
+            return end.map { now >= $0 } ?? true
+        }
+        return plannedEndAt.map { now >= $0 } ?? true
+    }
 }
 
 /// Persists active DeviceActivity intervals across extension invocations so an
@@ -16,6 +30,21 @@ struct SharedRitualActivityStateStore {
 
     init() {
         defaults = UserDefaults(suiteName: Self.appGroupIdentifier)
+    }
+
+    // Persistent tombstone also rejects callbacks already queued when deleting.
+    func markDeleted(schedulerID: String) {
+        defaults?.set(true, forKey: "rituo.deletedScheduler." + schedulerID)
+        defaults?.synchronize()
+    }
+
+    func restoreDeleted(schedulerID: String) {
+        defaults?.removeObject(forKey: "rituo.deletedScheduler." + schedulerID)
+        defaults?.synchronize()
+    }
+
+    func isDeleted(schedulerID: String) -> Bool {
+        defaults?.bool(forKey: "rituo.deletedScheduler." + schedulerID) == true
     }
 
     func markActive(activityName: String, startedAt: Date = .now) {

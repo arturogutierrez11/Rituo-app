@@ -163,38 +163,52 @@ extension FocusMode {
     var blockedItemsRequest: ReplaceModeBlockedItemsRequest {
         var items: [RitualBlockedItemRequest] = []
 
-        items += selection.applicationTokens.enumerated().map { index, token in
+        items += selection.applicationTokens
+            .map { Self.encodedTokenIdentifier($0, fallback: "app-unavailable") }
+            .sorted()
+            .enumerated().map { index, identifier in
             RitualBlockedItemRequest(
                 type: "app",
-                identifier: Self.encodedTokenIdentifier(token, fallback: "app-\(index + 1)"),
+                identifier: identifier,
                 displayName: "App \(index + 1)",
                 bundleIdentifier: nil
             )
         }
 
-        items += selection.categoryTokens.enumerated().map { index, token in
+        items += selection.categoryTokens
+            .map { Self.encodedTokenIdentifier($0, fallback: "category-unavailable") }
+            .sorted()
+            .enumerated().map { index, identifier in
             RitualBlockedItemRequest(
                 type: "category",
-                identifier: Self.encodedTokenIdentifier(token, fallback: "category-\(index + 1)"),
+                identifier: identifier,
                 displayName: "Categoria \(index + 1)",
                 bundleIdentifier: nil
             )
         }
 
-        items += selection.webDomainTokens.enumerated().map { index, token in
+        items += selection.webDomainTokens
+            .map { Self.encodedTokenIdentifier($0, fallback: "domain-unavailable") }
+            .sorted()
+            .enumerated().map { index, identifier in
             RitualBlockedItemRequest(
                 type: "domain",
-                identifier: Self.encodedTokenIdentifier(token, fallback: "domain-\(index + 1)"),
+                identifier: identifier,
                 displayName: "Web \(index + 1)",
                 bundleIdentifier: nil
             )
         }
 
+        // Identifiers are ordered before numbering display names, so both stay stable.
+        items.sort { ($0.type, $0.identifier) < ($1.type, $1.identifier) }
+
         return ReplaceModeBlockedItemsRequest(items: items)
     }
 
     private static func encodedTokenIdentifier<T: Encodable>(_ token: T, fallback: String) -> String {
-        guard let data = try? JSONEncoder().encode(token) else {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(token) else {
             return fallback
         }
 

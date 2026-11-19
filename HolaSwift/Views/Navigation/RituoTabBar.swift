@@ -5,37 +5,127 @@ struct RituoFloatingTabBar: View {
     @Namespace private var ns
 
     var body: some View {
-        GeometryReader { geo in
-            HStack(spacing: 0) {
-                ForEach(RootTab.allCases, id: \.self) { tab in
+        HStack(spacing: 0) {
+            ForEach(RootTab.allCases, id: \.self) { tab in
+                Button {
+                    AppDiagnostics.shared.event("navigation.tap from=\(selectedTab) to=\(tab)")
+                    withAnimation(.spring(response: 0.36, dampingFraction: 0.78)) {
+                        selectedTab = tab
+                    }
+                } label: {
                     RituoTabItem(
                         tab: tab,
-                        isSelected: selectedTab == tab,
-                        namespace: ns
+                        isSelected: selectedTab == tab
                     )
-                    .frame(width: geo.size.width / CGFloat(RootTab.allCases.count))
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
-                            selectedTab = tab
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 78)
+                    .background {
+                        if selectedTab == tab {
+                            selectionGlass
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 6)
+                                .matchedGeometryEffect(id: "selectionGlass", in: ns)
                         }
                     }
+                    .contentShape(Rectangle())
                 }
-            }
-            .padding(.vertical, 12)
-            .background {
-                Capsule(style: .continuous)
-                    .fill(Color(red: 0.11, green: 0.14, blue: 0.24))
-                    .shadow(color: .black.opacity(0.48), radius: 24, x: 0, y: 8)
-            }
-            .overlay {
-                Capsule(style: .continuous)
-                    .stroke(RituoPalette.white.opacity(0.09), lineWidth: 1)
+                .buttonStyle(.plain)
+                .accessibilityLabel(tab.title)
+                .accessibilityAddTraits(selectedTab == tab ? .isSelected : [])
+                .accessibilityIdentifier("tab.\(tab)")
             }
         }
-        .frame(height: 66)
+        .background {
+            ZStack {
+                // Frosted glass: blurs whatever scrolls underneath the bar.
+                Capsule(style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .environment(\.colorScheme, .dark)
+
+                // Rituo blue tint so the glass stays on-brand instead of going grey.
+                Capsule(style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                RituoPalette.darkCanteen.opacity(0.62),
+                                RituoPalette.deepOceanBlue.opacity(0.58)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+
+                // Soft light falling from the top edge.
+                Capsule(style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                RituoPalette.mistBlue.opacity(0.22),
+                                RituoPalette.lightBlue.opacity(0.04),
+                                .clear
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+            }
+            .shadow(color: RituoPalette.deepOceanBlue.opacity(0.55), radius: 24, x: 0, y: 10)
+        }
+        .overlay {
+            // Specular rim: bright at the top, fading toward the bottom.
+            Capsule(style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            RituoPalette.mistBlue.opacity(0.50),
+                            RituoPalette.lightBlue.opacity(0.12),
+                            RituoPalette.lightBlue.opacity(0.26)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 1
+                )
+                .allowsHitTesting(false)
+        }
         .padding(.horizontal, 20)
         .padding(.bottom, 22)
+    }
+
+    /// Glass pill that marks the current tab and slides between tabs.
+    private var selectionGlass: some View {
+        ZStack {
+            Capsule(style: .continuous)
+                .fill(.ultraThinMaterial)
+                .environment(\.colorScheme, .dark)
+
+            Capsule(style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            RituoPalette.lightBlue.opacity(0.46),
+                            RituoPalette.darkCanteen.opacity(0.26)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+
+            Capsule(style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            RituoPalette.mistBlue.opacity(0.70),
+                            RituoPalette.lightBlue.opacity(0.18)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 1
+                )
+        }
+        .shadow(color: RituoPalette.lightBlue.opacity(0.35), radius: 12, y: 0)
+        .allowsHitTesting(false)
     }
 }
 
@@ -75,21 +165,11 @@ struct RituoSymbolIcon: View {
 private struct RituoTabItem: View {
     let tab: RootTab
     let isSelected: Bool
-    let namespace: Namespace.ID
 
     var body: some View {
         VStack(spacing: 5) {
             // Icon
             ZStack {
-                // Glow behind selected icon
-                if isSelected {
-                    Circle()
-                        .fill(RituoPalette.white.opacity(0.10))
-                        .blur(radius: 8)
-                        .frame(width: 36, height: 36)
-                        .matchedGeometryEffect(id: "glow", in: namespace)
-                }
-
                 if tab == .home {
                     RituoSymbolIcon(size: 20, opacity: isSelected ? 1.0 : 0.30)
                 } else {

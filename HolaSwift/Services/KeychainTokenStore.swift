@@ -14,6 +14,7 @@ enum KeychainTokenStoreError: LocalizedError {
 
 final class KeychainTokenStore {
     static let shared = KeychainTokenStore()
+    private(set) var sessionRevision = UUID()
 
     private let service = "io.rituo.app.auth"
     private let accessTokenAccount = "accessToken"
@@ -39,6 +40,9 @@ final class KeychainTokenStore {
         profileDisplayName: String?,
         profileImageURL: URL?
     ) throws {
+        if loadAuthUser()?.id != user.id || loadRefreshToken() != refreshToken {
+            sessionRevision = UUID()
+        }
         try save(accessToken: accessToken, refreshToken: refreshToken)
         try saveAuthUser(user)
         try save(value: provider.rawValue, account: authProviderAccount)
@@ -76,6 +80,7 @@ final class KeychainTokenStore {
     }
 
     func clear() {
+        sessionRevision = UUID()
         delete(account: accessTokenAccount)
         delete(account: refreshTokenAccount)
         delete(account: authProviderAccount)

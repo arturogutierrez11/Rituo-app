@@ -77,13 +77,13 @@ struct SchedulerListPage: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 4)
-                    .padding(.bottom, 150)
+                    .padding(.bottom, 180)
                 }
             }
 
             createButton
-                .padding(.horizontal, 20)
-                .padding(.bottom, 110)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 120)
                 .opacity(appeared ? 1 : 0)
         }
         .onAppear {
@@ -226,17 +226,21 @@ struct SchedulerListPage: View {
 
     private var createButton: some View {
         Button { isCreateSheetPresented = true } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "plus")
-                    .font(.system(size: 14, weight: .semibold))
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(RituoPalette.deepOceanBlue.opacity(0.12))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(RituoPalette.deepOceanBlue)
+                }
                 Text("Crear un ritual")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.custom("Helvetica", size: 17).weight(.bold))
+                    .foregroundStyle(RituoPalette.deepOceanBlue)
             }
-            .foregroundStyle(RituoPalette.deepOceanBlue)
-            .frame(maxWidth: .infinity, minHeight: 56)
-            .background(RituoPalette.white)
-            .clipShape(Capsule())
-            .shadow(color: .black.opacity(0.18), radius: 16, x: 0, y: 6)
+            .frame(maxWidth: .infinity, minHeight: 60)
+            .background { RituoGlassCapsule(tint: .white) }
         }
         .buttonStyle(LoginPressButtonStyle())
     }

@@ -1,5 +1,10 @@
 import SwiftUI
 
+private enum ScreenTimePermissionSheet: String, Identifiable {
+    case guide
+    var id: String { rawValue }
+}
+
 private enum EmergencyUnlockSheet: Identifiable {
     case overview
     case reason
@@ -79,6 +84,7 @@ struct ProtectionSettingsView: View {
     @State private var strictModeSheet: StrictModeSheet?
     @State private var appInstallationBlockSheet: AppInstallationBlockSheet?
     @State private var sensitiveWebContentBlockSheet: SensitiveWebContentBlockSheet?
+    @State private var screenTimePermissionSheet: ScreenTimePermissionSheet?
 
     var body: some View {
         VStack(spacing: 14) {
@@ -101,6 +107,9 @@ struct ProtectionSettingsView: View {
         .sheet(item: $sensitiveWebContentBlockSheet) { sheet in
             sensitiveWebContentBlockBottomSheet(sheet)
         }
+        .sheet(item: $screenTimePermissionSheet) { _ in
+            ScreenTimePermissionGuide()
+        }
     }
 
     private var protectionSection: some View {
@@ -108,6 +117,35 @@ struct ProtectionSettingsView: View {
             profileSectionLabel("Protección")
 
             VStack(spacing: 0) {
+                Button {
+                    screenTimePermissionSheet = .guide
+                } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: "key.fill")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(RituoPalette.lightBlue)
+                            .frame(width: 22)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Proteger el permiso de Rituo")
+                                .font(.system(size: 15))
+                                .foregroundStyle(RituoPalette.white.opacity(0.80))
+                            Text("Guía para configurar un código en Ajustes")
+                                .font(.system(size: 11))
+                                .foregroundStyle(RituoPalette.white.opacity(0.54))
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(RituoPalette.white.opacity(0.40))
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 14)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                profileRowDivider
+
                 Button {
                     strictModeSheet = .overview
                 } label: {
@@ -293,7 +331,7 @@ struct ProtectionSettingsView: View {
                 symbol: "lock.shield",
                 tint: RituoPalette.lightBlue,
                 title: "Activar modo estricto",
-                message: "rituo va a impedir que la app se elimine en todo momento, aunque no haya un ritual activo. Para desactivarlo vas a necesitar tu tarjeta y no puede haber una sesión en curso.",
+                message: "Mientras esté activado, no vas a poder eliminar ninguna app del dispositivo, incluida rituo, aunque no haya un ritual o modo activo. Para desactivarlo vas a necesitar tu tarjeta y no puede haber una sesión en curso.",
                 actions: [
                     RituoBottomSheetAction(title: "Activar", symbol: "checkmark") {
                         strictModeSheet = nil
@@ -309,7 +347,7 @@ struct ProtectionSettingsView: View {
                 symbol: "lock.open",
                 tint: RituoPalette.danger,
                 title: "Desactivar modo estricto",
-                message: "Si lo desactivás, el iPhone volverá a permitir que rituo se elimine.",
+                message: "Si lo desactivás, rituo dejará de bloquear la eliminación de todas las apps del dispositivo, incluida rituo.",
                 actions: [
                     RituoBottomSheetAction(title: "Desactivar", symbol: "lock.open", style: .destructive) {
                         strictModeSheet = nil
@@ -526,7 +564,7 @@ struct ProtectionSettingsView: View {
 
     private var strictModeStatusText: String {
         viewModel.isStrictModeEnabled
-            ? "Protección permanente activa"
+            ? "Eliminación de apps bloqueada"
             : "Desactivado"
     }
 
@@ -610,7 +648,7 @@ struct ProtectionSettingsView: View {
 
     private var strictModeOverviewMessage: String {
         """
-        El modo estricto evita que rituo se pueda eliminar en todo momento, incluso cuando no hay un ritual o modo activo.
+        El modo estricto bloquea la eliminación de todas las apps del dispositivo, incluida rituo. Mientras esté activado, esta restricción se mantiene incluso cuando no hay un ritual o modo activo.
 
         Para desactivarlo necesitás apoyar tu tarjeta rituo. Si hay una sesión activa, primero tiene que terminar.
 
@@ -688,5 +726,68 @@ struct ProtectionSettingsView: View {
         )
 
         return actions
+    }
+}
+
+private struct ScreenTimePermissionGuide: View {
+    @Environment(\.dismiss) private var dismiss
+
+    private var supportsPasscodeProtection: Bool {
+        ProcessInfo.processInfo.isOperatingSystemAtLeast(
+            OperatingSystemVersion(majorVersion: 26, minorVersion: 4, patchVersion: 0)
+        )
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    Image(systemName: "key.shield")
+                        .font(.system(size: 36))
+                        .foregroundStyle(RituoPalette.lightBlue)
+                        .accessibilityHidden(true)
+
+                    Text("Protegé el acceso a Tiempo en pantalla")
+                        .font(.title2.bold())
+
+                    Text("Si desactivás el permiso de Rituo en Ajustes, los bloqueos dejan de aplicarse. Desde iOS 26.4, el código de Tiempo en pantalla permite proteger ese cambio.")
+
+                    if !supportsPasscodeProtection {
+                        Label("Esta protección requiere iOS 26.4 o posterior. Actualizá iOS antes de comprobarla.", systemImage: "info.circle")
+                            .foregroundStyle(RituoPalette.lightBlue)
+                    }
+
+                    step(1, title: "Abrí Tiempo en pantalla", detail: "En el iPhone, entrá a Ajustes → Tiempo en pantalla.")
+                    step(2, title: "Configurá el código", detail: "Tocá Bloquear configuración de Tiempo en pantalla (puede aparecer como Bloquear configuración) y seguí los pasos de Apple. Si ya tenés un código, usá el existente.")
+                    step(3, title: "Comprobá la protección", detail: "Con Rituo autorizado, intentá desactivar su interruptor en Apps con acceso a Tiempo en pantalla. Comprobá que el sistema te pida el código y cancelá sin retirar el permiso.")
+
+                    Text("Esta configuración se administra en Ajustes. Rituo no puede consultar ni cambiar tu código, ni confirmar desde esta pantalla que la protección quedó configurada. Quien conozca el código podrá autorizar la desactivación.")
+                        .font(.footnote)
+                        .foregroundStyle(RituoPalette.white.opacity(0.70))
+                }
+                .foregroundStyle(RituoPalette.white)
+                .padding(24)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(RituoPalette.deepOceanBlue.ignoresSafeArea())
+            .navigationTitle("Proteger permiso")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Listo") { dismiss() }
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func step(_ number: Int, title: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("\(number). \(title)")
+                .font(.headline)
+            Text(detail)
+                .font(.body)
+        }
+        .accessibilityElement(children: .combine)
     }
 }

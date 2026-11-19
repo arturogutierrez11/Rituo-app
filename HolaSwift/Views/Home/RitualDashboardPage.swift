@@ -153,10 +153,7 @@ struct RitualDashboardPage: View {
                             .foregroundStyle(RituoPalette.deepOceanBlue)
                     }
                     .frame(maxWidth: .infinity, minHeight: 60)
-                    .background(RituoPalette.white)
-                    .clipShape(Capsule())
-                    .shadow(color: RituoPalette.white.opacity(0.28), radius: 20, x: 0, y: 8)
-                    .shadow(color: Color.black.opacity(0.16), radius: 12, x: 0, y: 4)
+                    .background { RituoGlassCapsule(tint: .white) }
                 }
                 .buttonStyle(LoginPressButtonStyle())
                 .padding(.horizontal, 24)
@@ -674,131 +671,57 @@ private struct BreakButtonLoadingPlaceholder: View {
 
 private struct NextRitualBanner: View {
     let scheduler: RitualScheduler
-    @State private var pulses = false
-    @State private var shimmerMoves = false
-
     var body: some View {
-        HStack(spacing: 14) {
-            ritualIcon
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 7) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 11, weight: .medium))
+                Text("Próximo ritual")
+                    .font(.custom("Helvetica", size: 12).weight(.medium))
+            }
+            .foregroundStyle(RituoPalette.lightBlue.opacity(0.85))
 
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(RituoPalette.lightBlue)
-                        .frame(width: 5, height: 5)
-                        .scaleEffect(pulses ? 1.5 : 0.85)
-                        .shadow(color: RituoPalette.lightBlue.opacity(0.85), radius: pulses ? 7 : 4)
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(scheduler.title)
+                        .font(.custom("Helvetica", size: 19).weight(.bold))
+                        .foregroundStyle(RituoPalette.white)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                    Text("PRÓXIMO RITUAL")
-                        .font(.custom("Helvetica", size: 9).weight(.bold))
-                        .tracking(1.4)
-                        .foregroundStyle(RituoPalette.white.opacity(0.46))
+                    Text("\(scheduler.timeRangeText) · \(scheduler.weekdayText)")
+                        .font(.custom("Helvetica", size: 12).weight(.medium))
+                        .foregroundStyle(RituoPalette.white.opacity(0.60))
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                Text(scheduler.title)
-                    .font(.custom("Helvetica", size: 18).weight(.bold))
-                    .foregroundStyle(RituoPalette.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
-
-                if let countdown = countdownText {
-                    Text(countdown)
-                        .font(.custom("Helvetica", size: 13).weight(.bold))
-                        .foregroundStyle(RituoPalette.lightBlue)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.78)
-                }
-
-                HStack(spacing: 6) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text(scheduler.timeRangeText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.78)
-                    Text("·")
-                        .foregroundStyle(RituoPalette.white.opacity(0.22))
-                    Text(scheduler.weekdayText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.78)
-                }
-                .font(.custom("Helvetica", size: 12).weight(.bold))
-                .foregroundStyle(RituoPalette.white.opacity(0.40))
+                Image(systemName: schedulerIcon)
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundStyle(RituoPalette.lightBlue.opacity(0.80))
+                    .frame(width: 32, height: 32)
+                    .accessibilityHidden(true)
             }
 
-            Spacer(minLength: 0)
+            if let countdown = countdownText {
+                Text(countdown)
+                    .font(.custom("Helvetica", size: 12).weight(.medium))
+                    .foregroundStyle(RituoPalette.lightBlue)
+                    .monospacedDigit()
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 15)
-        .background(bannerBackground)
-        .overlay(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(RituoPalette.white.opacity(0.14))
-                .frame(width: 92, height: 1)
-                .padding(.leading, 22)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(RituoPalette.white.opacity(0.045))
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(
-                    LinearGradient(
-                        colors: [
-                            RituoPalette.lightBlue.opacity(shimmerMoves ? 0.55 : 0.16),
-                            RituoPalette.white.opacity(0.22),
-                            RituoPalette.lightBlue.opacity(shimmerMoves ? 0.16 : 0.55)
-                        ],
-                        startPoint: shimmerMoves ? .bottomTrailing : .topLeading,
-                        endPoint: shimmerMoves ? .topLeading : .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(RituoPalette.white.opacity(0.10), lineWidth: 1)
         }
-        .shadow(color: Color.black.opacity(0.24), radius: 18, x: 0, y: 10)
-        .shadow(color: RituoPalette.lightBlue.opacity(0.10), radius: 24, x: 0, y: 0)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true)) {
-                pulses = true
-            }
-            withAnimation(.easeInOut(duration: 3.2).repeatForever(autoreverses: true)) {
-                shimmerMoves = true
-            }
-        }
-    }
-
-    private var ritualIcon: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [RituoPalette.lightBlue.opacity(0.32), Color.clear],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: 38
-                    )
-                )
-                .frame(width: 74, height: 74)
-                .blur(radius: 6)
-
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            RituoPalette.lightBlue.opacity(0.30),
-                            RituoPalette.white.opacity(0.08)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: 58, height: 58)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(RituoPalette.lightBlue.opacity(0.30), lineWidth: 1)
-                }
-
-            Image(systemName: schedulerIcon)
-                .font(.system(size: 19, weight: .semibold))
-                .foregroundStyle(RituoPalette.white.opacity(0.90))
-                .shadow(color: RituoPalette.lightBlue.opacity(0.5), radius: 6)
-        }
+        .accessibilityElement(children: .combine)
     }
 
     private var countdownText: String? {
@@ -825,20 +748,6 @@ private struct NextRitualBanner: View {
         if days > 0 { return "Empieza en \(days) d \(hours) h" }
         if hours > 0 { return "Empieza en \(hours) h \(minutes) min" }
         return "Empieza en \(minutes) min"
-    }
-
-    private var bannerBackground: some View {
-        RoundedRectangle(cornerRadius: 24, style: .continuous)
-            .fill(
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.18, green: 0.25, blue: 0.39).opacity(0.94),
-                        Color(red: 0.10, green: 0.13, blue: 0.25).opacity(0.98)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
     }
 
     private var schedulerIcon: String {
@@ -1723,7 +1632,7 @@ private struct ModeConfirmStartSheet: View {
                             VStack(spacing: 10) {
                                 ModeStartOptionToggle(
                                     title: "Modo estricto",
-                                    subtitle: "Impide eliminar rituo mientras este modo esté activo.",
+                                    subtitle: "Bloquea la eliminación de todas las apps del dispositivo, incluida rituo, mientras este modo esté activo.",
                                     iconName: "lock.shield.fill",
                                     accentColor: mode.accentColor,
                                     isOn: $strictModeEnabled

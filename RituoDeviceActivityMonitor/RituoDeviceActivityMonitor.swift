@@ -17,6 +17,7 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
     private static let modeEndActivityPrefix = "rituo.modeEnd."
     private static let ritualBreakEndActivityPrefix = "rituo.ritualBreakEnd."
     private static let heartbeatActivityPrefix = "rituo.heartbeat."
+    private static let breakCompletionLock = NSRecursiveLock()
     private static let heartbeatInterval: TimeInterval = 2 * 60 * 60
 
     private struct ActiveRitualCandidate {
@@ -82,19 +83,27 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
             return
         }
 
+        guard !activityStateStore.isDeleted(schedulerID: metadata.schedulerId) else {
+            activityStateStore.remove(activityName: activity.rawValue)
+            reconcileActiveRitualShield()
+            return
+        }
+
+        // A suppressed occurrence must not interrupt an active mode either.
+        // Its recurring monitor remains registered for future days.
+        if suppressionStore.isSuppressed(schedulerId: metadata.schedulerId) {
+            activityStateStore.remove(activityName: activity.rawValue)
+            reconcileActiveRitualShield()
+            debugStore.log("Inicio ignorado por supresion activa para \(metadata.title).")
+            return
+        }
+
         let preemptedMode = suppressionStore.isModeActive()
         if preemptedMode {
             suppressionStore.setModeActive(false)
             cancelModeBreakForPreemption()
             clearModeStores()
             debugStore.log("Modo activo interrumpido por el ritual \(metadata.title).")
-        }
-
-        if suppressionStore.isSuppressed(schedulerId: metadata.schedulerId) {
-            activityStateStore.remove(activityName: activity.rawValue)
-            reconcileActiveRitualShield()
-            debugStore.log("Inicio ignorado por supresion activa para \(metadata.title).")
-            return
         }
 
         guard selectionStore.loadSelection(for: activity.rawValue) != nil else {
@@ -134,6 +143,8 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
         }
 
         if isHeartbeatActivity(activity) {
+            guard suppressionStore.heartbeatActivityName() == activity.rawValue else { return }
+            suppressionStore.setHeartbeatActivityName(nil)
             debugStore.log("Latido de bloqueo disparado \(activity.rawValue).")
             reconcileActiveRitualShield()
             return
@@ -153,6 +164,9 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
             guard let metadata = metadataStore.loadMetadata(
                 for: activeActivity.activityName
             ),
+            !activityStateStore.isDeleted(schedulerID: metadata.schedulerId),
+            !activeActivity.hasExpired(endHour: metadata.endHour,
+                endMinute: metadata.endMinute, plannedEndAt: metadata.plannedEndAt),
             !suppressionStore.isSuppressed(
                 schedulerId: metadata.schedulerId
             ),
@@ -229,6 +243,11 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
             return
         }
 
+        if let name = suppressionStore.heartbeatActivityName(),
+           let expiration = suppressionStore.heartbeatExpiration(), expiration > .now,
+           center.activities.contains(DeviceActivityName(name)) {
+            return
+        }
         let activityName = DeviceActivityName(
             Self.heartbeatActivityPrefix + UUID().uuidString
         )
@@ -248,16 +267,19 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
         )
 
         if let previousName = suppressionStore.heartbeatActivityName() {
+            suppressionStore.setHeartbeatActivityName(nil)
             center.stopMonitoring([DeviceActivityName(previousName)])
         }
 
+        suppressionStore.setHeartbeatActivityName(activityName.rawValue)
+        suppressionStore.setHeartbeatExpiration(end)
         do {
             try center.startMonitoring(activityName, during: schedule)
-            suppressionStore.setHeartbeatActivityName(activityName.rawValue)
             debugStore.log(
                 "Latido de bloqueo reprogramado \(activityName.rawValue) hasta \(end)."
             )
         } catch {
+            suppressionStore.setHeartbeatActivityName(nil)
             debugStore.log(
                 "No se pudo reprogramar el latido de bloqueo: \(error.localizedDescription)."
             )
@@ -269,8 +291,8 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
             return
         }
 
-        center.stopMonitoring([DeviceActivityName(storedName)])
         suppressionStore.setHeartbeatActivityName(nil)
+        center.stopMonitoring([DeviceActivityName(storedName)])
         debugStore.log("Latido de bloqueo cancelado \(storedName).")
     }
 
@@ -454,12 +476,18 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
         _ activity: DeviceActivityName,
         source: String
     ) {
+        Self.breakCompletionLock.lock()
+        defer { Self.breakCompletionLock.unlock() }
+        guard metadataStore.loadMetadata(for: activity.rawValue) != nil else {
+            debugStore.log("Fin de recreo duplicado o cancelado ignorado \(activity.rawValue).")
+            return
+        }
         restoreModeShieldAfterBreak(activity)
         sendModeBreakEndedNotification(activity)
         selectionStore.removeSelection(for: activity.rawValue)
         metadataStore.removeMetadata(for: activity.rawValue)
-        center.stopMonitoring([activity])
         _ = suppressionStore.takeModeBreakActivityName()
+        center.stopMonitoring([activity])
         debugStore.log("Fin de recreo de modo procesado por \(source) \(activity.rawValue).")
     }
 
@@ -487,9 +515,10 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
         } ?? "rituo.mode.break.extension.ended.\(activity.rawValue)"
 
         let content = UNMutableNotificationContent()
-        content.title = "Recreo terminado"
+        content.title = "Volvé a tu foco"
         content.body = "\(title) volvió a aplicar tus restricciones."
         content.sound = .default
+        RituoNotificationStyle.apply(to: content, name: title, groupID: metadata?.schedulerId ?? activity.rawValue, event: "break-end")
 
         let request = UNNotificationRequest(
             identifier: identifier,
@@ -516,14 +545,20 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
         _ activity: DeviceActivityName,
         source: String
     ) {
+        Self.breakCompletionLock.lock()
+        defer { Self.breakCompletionLock.unlock() }
+        guard metadataStore.loadMetadata(for: activity.rawValue) != nil else {
+            debugStore.log("Fin de recreo duplicado o cancelado ignorado \(activity.rawValue).")
+            return
+        }
         // Unlike mode breaks, ritual shields are reapplied via reconcileActiveRitualShield()
         // (the same authoritative logic used on every ritual start/end) rather than the
         // break's own stored selection, so priority/suppression stay correct.
         sendRitualBreakEndedNotification(activity)
         selectionStore.removeSelection(for: activity.rawValue)
         metadataStore.removeMetadata(for: activity.rawValue)
-        center.stopMonitoring([activity])
         _ = suppressionStore.takeRitualBreakActivityName()
+        center.stopMonitoring([activity])
         reconcileActiveRitualShield()
         debugStore.log("Fin de recreo de ritual procesado por \(source) \(activity.rawValue).")
     }
@@ -536,9 +571,10 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
         } ?? "rituo.ritual.break.extension.ended.\(activity.rawValue)"
 
         let content = UNMutableNotificationContent()
-        content.title = "Recreo terminado"
+        content.title = "Volvé a tu foco"
         content.body = "\(title) volvió a aplicar tus restricciones."
         content.sound = .default
+        RituoNotificationStyle.apply(to: content, name: title, groupID: metadata?.schedulerId ?? activity.rawValue, event: "break-end")
 
         let request = UNNotificationRequest(
             identifier: identifier,
@@ -572,7 +608,7 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
 
         let identifier = "rituo.ritual.started.\(metadata.schedulerId)"
         let content = UNMutableNotificationContent()
-        content.title = "Tu ritual empezó"
+        content.title = "Tu momento de foco empezó"
 
         if let endHour = metadata.endHour,
            let endMinute = metadata.endMinute {
@@ -581,6 +617,7 @@ final class RituoDeviceActivityMonitor: DeviceActivityMonitor {
             content.body = "\(metadata.title) está activo. Tus apps seleccionadas quedaron en pausa."
         }
         content.sound = .default
+        RituoNotificationStyle.apply(to: content, name: metadata.title, groupID: metadata.schedulerId, event: "start")
 
         let request = UNNotificationRequest(
             identifier: identifier,
